@@ -3,7 +3,8 @@ CXXFLAGS=${CFLAGS} -std=c++11
 
 all: deckeval
 
-deckeval: file.o
+deckeval: file.o mapping.o
 	@#
 
 file.o: file.cc file.h
+mapping.o: mapping.cc mapping.h
