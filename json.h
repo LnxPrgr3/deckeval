@@ -21,12 +21,19 @@ private:
 	size_t _len;
 };
 
+class json_object {};
+class json_array {};
+class json_end {};
+
 class json_value {
 public:
 	json_value() : _type(NONE) {}
 	json_value(bool value) : _type(BOOLEAN), _boolean(value) {}
 	json_value(double value) : _type(NUMBER), _number(value) {}
 	json_value(const char *start, const char *end) : _type(STRING), _string(start, end-start) {}
+	json_value(const json_object &) : _type(OBJECT) {}
+	json_value(const json_array &) : _type(ARRAY) {}
+	json_value(const json_end &) : _type(END) {}
 	bool is_null() const { return _type == NONE; }
 	bool is_boolean() const { return _type == BOOLEAN; }
 	bool as_boolean() {
@@ -46,8 +53,11 @@ public:
 			throw json_exception("Invalid conversion to string");
 		return _string;
 	}
+	bool is_object() const { return _type == OBJECT; }
+	bool is_array() const { return _type == ARRAY; }
+	bool is_end() const { return _type == END; }
 private:
-	enum {NONE, BOOLEAN, NUMBER, STRING} _type;
+	enum {NONE, BOOLEAN, NUMBER, STRING, OBJECT, ARRAY, END} _type;
 	union {
 		bool _boolean;
 		double _number;
@@ -263,6 +273,51 @@ ForwardIterator json_parse_string(ForwardIterator begin, ForwardIterator end, Ca
 }
 
 template <class ForwardIterator, class Callback>
+ForwardIterator json_parse_object(ForwardIterator begin, ForwardIterator end, Callback &&cb) {
+	cb(json_value(json_object()));
+	begin = json_skip_whitespace(begin, end);
+	json_nonempty(begin, end);
+	while(*begin != '}') {
+		if(*begin != '"')
+			throw json_exception("Invalid object key");
+		begin = json_parse_string(++begin, end, cb);
+		begin = json_skip_whitespace(begin, end);
+		json_nonempty(begin, end);
+		begin = json_parse_char(begin, end, ':');
+		begin = json_skip_whitespace(begin, end);
+		begin = json_parse(begin, end, cb);
+		begin = json_skip_whitespace(begin, end);
+		json_nonempty(begin, end);
+		if(*begin == ',') {
+			begin = json_skip_whitespace(++begin, end);
+			json_nonempty(begin, end);
+		} else if(*begin != '}')
+			throw json_exception("Object key/value pairs must be separated by commas");
+	}
+	cb(json_value(json_end()));
+	return ++begin;
+}
+
+template <class ForwardIterator, class Callback>
+ForwardIterator json_parse_array(ForwardIterator begin, ForwardIterator end, Callback &&cb) {
+	cb(json_value(json_array()));
+	begin = json_skip_whitespace(begin, end);
+	json_nonempty(begin, end);
+	while(*begin != ']') {
+		begin = json_parse(begin, end, cb);
+		begin = json_skip_whitespace(begin, end);
+		json_nonempty(begin, end);
+		if(*begin == ',') {
+			begin = json_skip_whitespace(++begin, end);
+			json_nonempty(begin, end);
+		} else if(*begin != ']')
+			throw json_exception("Array members must be separated by commas");
+	}
+	cb(json_value(json_end()));
+	return ++begin;
+}
+
+template <class ForwardIterator, class Callback>
 ForwardIterator json_parse(ForwardIterator begin, ForwardIterator end, Callback &&cb) {
 	begin = json_skip_whitespace(begin, end);
 	json_nonempty(begin, end);
@@ -293,6 +348,12 @@ ForwardIterator json_parse(ForwardIterator begin, ForwardIterator end, Callback 
 		break;
 	case '"':
 		begin = json_parse_string(++begin, end, cb);
+		break;
+	case '{':
+		begin = json_parse_object(++begin, end, cb);
+		break;
+	case '[':
+		begin = json_parse_array(++begin, end, cb);
 		break;
 	}
 	return begin;
