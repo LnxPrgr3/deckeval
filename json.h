@@ -75,6 +75,7 @@ public:
 		case END:
 			break;
 		}
+		return *this;
 	}
 	bool is_null() const { return _type == NONE; }
 	bool is_boolean() const { return _type == BOOLEAN; }
