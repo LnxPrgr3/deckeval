@@ -2,6 +2,10 @@
 #define DECKEVAL_JSON_H
 #include <exception>
 #include <cmath>
+#include <cstring>
+#include <vector>
+#include <map>
+#include <new>
 
 class json_exception : public std::exception {
 public:
@@ -16,6 +20,13 @@ public:
 	json_string(const char *data, size_t len) : _data(data), _len(len) {}
 	const char *c_str() const { return _data; }
 	size_t size() const { return _len; }
+	bool operator<(const json_string &x) const {
+		size_t n = _len < x._len ? _len : x._len;
+		auto res = memcmp(_data, x._data, n);
+		return res < 0 ? true :
+		       n == 0 ? _len < x._len :
+		       false;
+	}
 private:
 	const char *_data;
 	size_t _len;
@@ -28,12 +39,43 @@ class json_end {};
 class json_value {
 public:
 	json_value() : _type(NONE) {}
+	json_value(const json_value &x) {
+		*this = x;
+	}
 	json_value(bool value) : _type(BOOLEAN), _boolean(value) {}
 	json_value(double value) : _type(NUMBER), _number(value) {}
 	json_value(const char *start, const char *end) : _type(STRING), _string(start, end-start) {}
-	json_value(const json_object &) : _type(OBJECT) {}
-	json_value(const json_array &) : _type(ARRAY) {}
+	json_value(const json_object &) : _type(OBJECT), _object() {}
+	json_value(const json_array &) : _type(ARRAY), _array() {}
 	json_value(const json_end &) : _type(END) {}
+	~json_value() {
+		if(is_object())
+			_object.~map();
+		else if(is_array())
+			_array.~vector();
+	}
+	json_value &operator=(const json_value &x) {
+		_type = x._type;
+		switch(_type) {
+		case BOOLEAN:
+			_boolean = x._boolean;
+			break;
+		case NUMBER:
+			_number = x._number;
+			break;
+		case STRING:
+			new(&_string) json_string(x._string);
+			break;
+		case OBJECT:
+			new(&_object) std::map<json_string, json_value>(x._object);
+			break;
+		case ARRAY:
+			new(&_array) std::vector<json_value>(x._array);
+			break;
+		case END:
+			break;
+		}
+	}
 	bool is_null() const { return _type == NONE; }
 	bool is_boolean() const { return _type == BOOLEAN; }
 	bool as_boolean() {
@@ -56,12 +98,35 @@ public:
 	bool is_object() const { return _type == OBJECT; }
 	bool is_array() const { return _type == ARRAY; }
 	bool is_end() const { return _type == END; }
+	json_value &insert(const json_string &key, const json_value &value) {
+		if(!is_object())
+			throw json_exception("Invalid conversion to object");
+		auto &rv = _object[key];
+		rv = value;
+		return rv;
+	}
+	json_value &insert(const json_value &value) {
+		if(!is_array())
+			throw json_exception("Invalid conversion to array");
+		_array.push_back(value);
+		return _array.back();
+	}
+	void reserve(size_t n) {
+		if(is_array())
+			_array.reserve(n);
+	}
+	void shrink_to_fit() {
+		if(is_array())
+			_array.shrink_to_fit();
+	}
 private:
 	enum {NONE, BOOLEAN, NUMBER, STRING, OBJECT, ARRAY, END} _type;
 	union {
 		bool _boolean;
 		double _number;
 		json_string _string;
+		std::map<json_string, json_value> _object;
+		std::vector<json_value> _array;
 	};
 };
 
@@ -366,6 +431,50 @@ ForwardIterator json_parse(ForwardIterator begin, ForwardIterator end, Callback 
 		break;
 	}
 	return begin;
+}
+
+template <class ForwardIterator>
+json_value json_parse(ForwardIterator begin, ForwardIterator end) {
+	json_value rv, key;
+	std::vector<json_value *> stack;
+	bool root_set = false, key_set = false;
+	json_parse(begin, end, [&](const json_value &x) {
+		if(!root_set) {
+			rv = x;
+			root_set = true;
+			if(x.is_object() || x.is_array()) {
+				rv.reserve(128);
+				stack.push_back(&rv);
+			}
+			return;
+		}
+		if(x.is_end()) {
+			stack.back()->shrink_to_fit();
+			stack.pop_back();
+			return;
+		}
+		json_value *cur = stack.back();
+		if(cur->is_object()) {
+			if(!key_set) {
+				key = x;
+				key_set = true;
+			} else {
+				key_set = false;
+				auto &val = cur->insert(key.as_string(), x);
+				if(val.is_array() || val.is_object()) {
+					val.reserve(128);
+					stack.push_back(&val);
+				}
+			}
+		} else {
+			auto &val = cur->insert(x);
+			if(val.is_array() || val.is_object()) {
+				val.reserve(128);
+				stack.push_back(&val);
+			}
+		}
+	});
+	return rv;
 }
 
 #endif
