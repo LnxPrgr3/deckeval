@@ -171,8 +171,7 @@ ForwardIterator json_parse_number(ForwardIterator begin, ForwardIterator end, Ca
 
 template <class ForwardIterator>
 ForwardIterator json_str_write(ForwardIterator pos, char c) {
-	if(*pos != c)
-		*pos = c;
+	*pos = c;
 	return ++pos;
 }
 
@@ -223,8 +222,7 @@ int json_parse_hex(ForwardIterator begin, ForwardIterator end) {
 }
 
 template <class ForwardIterator, class Callback>
-ForwardIterator json_parse_string(ForwardIterator begin, ForwardIterator end, Callback &&cb) {
-	ForwardIterator str = begin;
+ForwardIterator json_parse_string_slow(ForwardIterator str, ForwardIterator begin, ForwardIterator end, Callback &&cb) {
 	ForwardIterator wpos = begin;
 	while(begin != end && *begin != '"') {
 		if(*begin == '\\') {
@@ -265,10 +263,21 @@ ForwardIterator json_parse_string(ForwardIterator begin, ForwardIterator end, Ca
 			wpos = json_str_write(wpos, *begin);
 		++begin;
 	}
-	if(*begin != '"')
-		throw json_exception("Unexpected end of input");
-	json_str_write(wpos, 0);
+	json_nonempty(begin, end);
 	cb(json_value(str, wpos));
+	return ++begin;
+}
+
+template <class ForwardIterator, class Callback>
+ForwardIterator json_parse_string(ForwardIterator begin, ForwardIterator end, Callback &&cb) {
+	ForwardIterator str = begin;
+	while(begin != end && *begin != '"') {
+		if(*begin == '\\')
+			return json_parse_string_slow(str, begin, end, cb);
+		++begin;
+	}
+	json_nonempty(begin, end);
+	cb(json_value(str, begin));
 	return ++begin;
 }
 
