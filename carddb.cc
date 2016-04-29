@@ -1,0 +1,391 @@
+#include "carddb.h"
+
+void card_database::cost::parse_error() {
+	throw std::runtime_error("Invalid mana cost");
+}
+
+void card_database::cost::parse_next(const char *str, const char *end) {
+	_exists = 1;
+	if(str == end)
+		parse_error();
+	if(*str++ != '}')
+		parse_error();
+	return parse(str, end);
+}
+
+void card_database::cost::parse(const char *str, const char *end) {
+	if(str == end)
+		return;
+	if(*str++ != '{')
+		parse_error();
+	if(str == end)
+		parse_error();
+	switch(*str++) {
+	case 'W':
+		if(str != end && *str == '/') {
+			++str;
+			if(str == end)
+				parse_error();
+			switch(*str++) {
+			case 'U':
+				++_whiteblue;
+				break;
+			case 'B':
+				++_whiteblack;
+				break;
+			case 'R':
+				++_whitered;
+				break;
+			case 'G':
+				++_whitegreen;
+				break;
+			case 'P':
+				++_whitephyrexian;
+				break;
+			default:
+				parse_error();
+			}
+		} else
+			++_white;
+		return parse_next(str, end);
+	case 'U':
+		if(str != end && *str == '/') {
+			++str;
+			if(str == end)
+				parse_error();
+			switch(*str++) {
+			case 'W':
+				++_whiteblue;
+				break;
+			case 'B':
+				++_blueblack;
+				break;
+			case 'R':
+				++_bluered;
+				break;
+			case 'G':
+				++_bluegreen;
+				break;
+			case 'P':
+				++_bluephyrexian;
+				break;
+			default:
+				parse_error();
+			}
+		} else
+			++_blue;
+		return parse_next(str, end);
+	case 'B':
+		if(str != end && *str == '/') {
+			++str;
+			if(str == end)
+				parse_error();
+			switch(*str++) {
+			case 'W':
+				++_whiteblack;
+				break;
+			case 'U':
+				++_bluered;
+				break;
+			case 'R':
+				++_blackred;
+				break;
+			case 'G':
+				++_blackgreen;
+				break;
+			case 'P':
+				++_blackphyrexian;
+				break;
+			default:
+				parse_error();
+			}
+		} else
+			++_black;
+		return parse_next(str, end);
+	case 'R':
+		if(str != end && *str == '/') {
+			++str;
+			if(str == end)
+				parse_error();
+			switch(*str++) {
+			case 'W':
+				++_whitered;
+				break;
+			case 'U':
+				++_bluered;
+				break;
+			case 'B':
+				++_blackred;
+				break;
+			case 'G':
+				++_redgreen;
+				break;
+			case 'P':
+				++_redphyrexian;
+				break;
+			default:
+				parse_error();
+			}
+		} else
+			++_red;
+		return parse_next(str, end);
+	case 'G':
+		if(str != end && *str == '/') {
+			++str;
+			if(str == end)
+				parse_error();
+			switch(*str++) {
+			case 'W':
+				++_whitegreen;
+				break;
+			case 'U':
+				++_bluegreen;
+				break;
+			case 'B':
+				++_blackgreen;
+				break;
+			case 'R':
+				++_redgreen;
+				break;
+			case 'P':
+				++_redphyrexian;
+				break;
+			default:
+				parse_error();
+			}
+		} else
+			++_green;
+		return parse_next(str, end);
+	case 'C':
+		++_colorless;
+		return parse_next(str, end);
+	case 'X':
+		++_x;
+		return parse_next(str, end);
+	case 'Y':
+		++_y;
+		return parse_next(str, end);
+	case 'Z':
+		++_z;
+		return parse_next(str, end);
+	case 'T':
+		_tap = 1;
+		return parse_next(str, end);
+	case 'q':
+		_untap = 1;
+		return parse_next(str, end);
+	case 'h':
+		if(str == end)
+			parse_error();
+		switch(*str++) {
+		case 'w':
+			_halfwhite = 1;
+			break;
+		case 'u':
+			_halfblue = 1;
+			break;
+		case 'b':
+			_halfblack = 1;
+			break;
+		case 'r':
+			_halfred = 1;
+			break;
+		case 'g':
+			_halfgreen = 1;
+			break;
+		default:
+			parse_error();
+		}
+		return parse_next(str, end);
+	case '0':
+	case '1':
+	case '2':
+		if(str != end && *str == '/') {
+			++str;
+			if(str == end)
+				parse_error();
+			switch(*str++) {
+				case 'W':
+					++_2white;
+					break;
+				case 'U':
+					++_2blue;
+					break;
+				case 'B':
+					++_2black;
+					break;
+				case 'R':
+					++_2red;
+					break;
+				case 'G':
+					++_2green;
+					break;
+			}
+			return parse_next(str, end);
+		}
+	case '3':
+	case '4':
+	case '5':
+	case '6':
+	case '7':
+	case '8':
+	case '9':
+		if(_generic != 0)
+			parse_error();
+		--str;
+		while(str != end && *str >= '0' && *str <= '9') {
+			_generic = _generic*10 + (*str++ - '0');
+		}
+		return parse_next(str, end);
+	default:
+		parse_error();
+	}
+}
+
+std::ostream &operator<<(std::ostream &out, const card_database::cost &x) {
+	if(!x.exists())
+		return out;
+	bool wrote = false;
+	for(int i = 0; i < x.x(); ++i) {
+		out << "{X}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.y(); ++i) {
+		out << "{Y}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.z(); ++i) {
+		out << "{Z}";
+		wrote = true;
+	}
+	if(x.generic()) {
+		out << '{' << x.generic() << '}';
+		wrote = true;
+	}
+	for(int i = 0; i < x.whiteblue(); ++i) {
+		out << "{W/U}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.whiteblack(); ++i) {
+		out << "{W/B}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.whitered(); ++i) {
+		out << "{W/R}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.whitegreen(); ++i) {
+		out << "{W/G}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.whitephyrexian(); ++i) {
+		out << "{W/P}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.twowhite(); ++i) {
+		out << "{2/W}";
+		wrote = true;
+	}
+	if(x.halfwhite())
+		out << "{hw}";
+	for(int i = 0; i < x.white(); ++i) {
+		out << "{W}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.blueblack(); ++i) {
+		out << "{U/B}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.bluered(); ++i) {
+		out << "{U/R}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.bluegreen(); ++i) {
+		out << "{U/G}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.bluephyrexian(); ++i) {
+		out << "{U/P}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.twoblue(); ++i) {
+		out << "{2/U}";
+		wrote = true;
+	}
+	if(x.halfblue())
+		out << "{hu}";
+	for(int i = 0; i < x.blue(); ++i) {
+		out << "{U}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.blackred(); ++i) {
+		out << "{B/R}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.blackgreen(); ++i) {
+		out << "{B/G}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.blackphyrexian(); ++i) {
+		out << "{B/P}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.twoblack(); ++i) {
+		out << "{2/B}";
+		wrote = true;
+	}
+	if(x.halfblack())
+		out << "{hb}";
+	for(int i = 0; i < x.black(); ++i) {
+		out << "{B}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.redgreen(); ++i) {
+		out << "{R/G}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.redphyrexian(); ++i) {
+		out << "{R/P}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.twored(); ++i) {
+		out << "{2/R}";
+		wrote = true;
+	}
+	if(x.halfred())
+		out << "{hr}";
+	for(int i = 0; i < x.red(); ++i) {
+		out << "{R}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.greenphyrexian(); ++i) {
+		out << "{G/P}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.twogreen(); ++i) {
+		out << "{2/G}";
+		wrote = true;
+	}
+	if(x.halfgreen())
+		out << "{hg}";
+	for(int i = 0; i < x.green(); ++i) {
+		out << "{G}";
+		wrote = true;
+	}
+	for(int i = 0; i < x.colorless(); ++i) {
+		out << "{C}";
+		wrote = true;
+	}
+	if(x.tap()) {
+		out << "{T}";
+		wrote = true;
+	}
+	if(x.untap()) {
+		out << "{q}";
+		wrote = true;
+	}
+	if(!wrote)
+		out << "{0}";
+	return out;
+}
+

@@ -3,6 +3,8 @@
 #include "file.h"
 #include "mapping.h"
 #include "json.h"
+#include <iostream>
+#include <stdexcept>
 
 class card_database {
 public:
@@ -62,13 +64,114 @@ public:
 		decltype(json_value().as_array()) _collection;
 	};
 
+	class cost {
+	public:
+		cost() {
+			memset(this, 0, sizeof(*this));
+		}
+
+		cost(const json_string &x) : cost() {
+			const char *str = x.c_str();
+			const char *end = str+x.size();
+			try {
+				parse(str, end);
+			} catch (const std::exception &e) {
+				throw std::runtime_error(std::string("Invalid mana cost: ") + std::string(str, x.size()));
+			}
+		}
+		int white() const { return _white; }
+		int halfwhite() const { return _halfwhite; }
+		int twowhite() const { return _2white; }
+		int whiteblue() const { return _whiteblue; }
+		int whiteblack() const { return _whiteblack; }
+		int whitered() const { return _whitered; }
+		int whitegreen() const { return _whitegreen; }
+		int whitephyrexian() const { return _whitephyrexian; }
+		int blue() const { return _blue; }
+		int halfblue() const { return _halfblue; }
+		int twoblue() const { return _2blue; }
+		int blueblack() const { return _blueblack; }
+		int bluered() const { return _bluered; }
+		int bluegreen() const { return _bluegreen; }
+		int bluephyrexian() const { return _bluephyrexian; }
+		int black() const { return _black; }
+		int halfblack() const { return _halfblack; }
+		int twoblack() const { return _2black; }
+		int blackred() const { return _blackred; }
+		int blackgreen() const { return _blackgreen; }
+		int blackphyrexian() const { return _blackphyrexian; }
+		int red() const { return _red; }
+		int halfred() const { return _halfred; }
+		int twored() const { return _2red; }
+		int redgreen() const { return _redgreen; }
+		int redphyrexian() const { return _redphyrexian; }
+		int green() const { return _green; }
+		int halfgreen() const { return _halfgreen; }
+		int twogreen() const { return _2green; }
+		int greenphyrexian() const { return _greenphyrexian; }
+		int colorless() const { return _colorless; }
+		int x() const { return _x; }
+		int y() const { return _y; }
+		int z() const { return _z; }
+		bool exists() const { return _exists; }
+		bool tap() const { return _tap; }
+		bool untap() const { return _untap; }
+		int generic() const { return _generic; }
+	private:
+		void parse_error();
+		void parse_next(const char *str, const char *end);
+		void parse(const char *str, const char *end);
+
+		unsigned int _white:6,
+		             _2white:6,
+		             _whiteblue:6,
+		             _whiteblack:6,
+		             _whitered:6,
+		             _whitegreen:6,
+		             _whitephyrexian:6,
+		             _blue:6,
+		             _2blue:6,
+		             _bluewhite:6,
+		             _blueblack:6,
+		             _bluered:6,
+		             _bluegreen:6,
+		             _bluephyrexian:6,
+		             _black:6,
+		             _2black:6,
+		             _blackred:6,
+		             _blackgreen:6,
+		             _blackphyrexian:6,
+		             _red:6,
+		             _2red:6,
+		             _redgreen:6,
+		             _redphyrexian:6,
+		             _green:6,
+		             _2green:6,
+		             _greenphyrexian:6,
+		             _colorless:6,
+					 _x:2,
+					 _y:2,
+					 _z:2,
+					 _halfwhite:1,
+					 _halfblue:1,
+					 _halfblack:1,
+					 _halfred:1,
+					 _halfgreen:1,
+		             _exists:1,
+		             _tap:1,
+					 _untap:1;
+		unsigned int _generic;
+	};
+
 	class card {
 	public:
 		json_string id() const { return _card["id"].as_string(); }
 		json_string layout() const { return _card["layout"].as_string(); }
 		json_string name() const { return _card["name"].as_string(); }
 		decltype(json_value().as_array()) names() const { return _card["names"].as_array(); }
-		json_string mana_cost() const { return _card["manaCost"].as_string(); }
+		cost mana_cost() const {
+			return cost(_card.has_key("manaCost") ? _card["manaCost"].as_string() : json_string("", 0));
+		}
 		int cmc() const { return _card.has_key("cmc") ? (int)_card["cmc"].as_number() : 0; }
 		decltype(json_value().as_array()) colors() const { return _card["colors"].as_array(); }
 		decltype(json_value().as_array()) color_identity() const { return _card["colorIdentity"].as_array(); }
@@ -132,5 +235,7 @@ private:
 	mapping _mapping;
 	json_document _sets;
 };
+
+std::ostream &operator<<(std::ostream &out, const card_database::cost &x);
 
 #endif
