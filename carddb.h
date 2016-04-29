@@ -180,7 +180,7 @@ public:
 		decltype(json_value().as_array()) types() const { return _card["types"].as_array(); }
 		decltype(json_value().as_array()) subtypes() const { return _card["subtypes"].as_array(); }
 		json_string rarity() const { return _card["rarity"].as_string(); }
-		json_string text() const { return _card["text"].as_string(); }
+		json_string text() const { return _card.has_key("text") ? _card["text"].as_string() : json_string("", 0); }
 		json_string flavor() const { return _card["flavor"].as_string(); }
 		json_string artist() const { return _card["artist"].as_string(); }
 		json_string number() const { return _card["number"].as_string(); }
