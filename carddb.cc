@@ -1,3 +1,5 @@
+#include "file.h"
+#include "json.h"
 #include "carddb.h"
 
 void card_database::cost::parse_error() {
@@ -253,6 +255,13 @@ card_database::card_database(const char *filename) : _mapping(load(filename)), _
 			_cards.emplace(card.name(), card);
 		}
 	}
+}
+
+mapping card_database::load(const char *filename) {
+	return mapping::options()
+		.file(file::options(filename).open())
+		.write(false)
+		.map();
 }
 
 std::ostream &operator<<(std::ostream &out, const card_database::cost &x) {

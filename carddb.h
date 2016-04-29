@@ -1,6 +1,5 @@
 #ifndef DECKEVAL_CARDDB_H
 #define DECKEVAL_CARDDB_H
-#include "file.h"
 #include "mapping.h"
 #include "json.h"
 #include <iostream>
@@ -249,12 +248,7 @@ public:
 		return res->second;
 	}
 private:
-	static mapping load(const char *filename) {
-		return mapping::options()
-			.file(file::options(filename).open())
-			.write(false)
-			.map();
-	}
+	static mapping load(const char *filename);
 	static json_document parse(mapping &data) {
 		auto str = (char *)data.data();
 		return json_parse(str, str+data.size());

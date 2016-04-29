@@ -1,9 +1,10 @@
 #ifndef DECKEVAL_MAPPING_H
 #define DECKEVAL_MAPPING_H
-#include "file.h"
 #include <sys/mman.h>
 #include <unistd.h>
 #include <utility>
+
+class file;
 
 class mapping {
 public:

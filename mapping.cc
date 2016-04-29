@@ -1,4 +1,5 @@
 #include "mapping.h"
+#include "file.h"
 #include <cerrno>
 #include <cstring>
 #include <stdexcept>
