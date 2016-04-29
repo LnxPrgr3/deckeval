@@ -9,6 +9,7 @@
 #include <map>
 #include <new>
 #include <iostream>
+#include "mapping.h"
 
 class json_exception : public std::exception {
 public:
