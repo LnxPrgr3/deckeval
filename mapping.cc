@@ -44,6 +44,8 @@ void mapping::truncate(size_t size) {
 	void *drop = reinterpret_cast<char *>(_addr) + size;
 	if(munmap(drop, _length - size))
 		throw std::runtime_error(strerror(errno));
+	_length = size;
+	_valid_length = size;
 }
 
 long mapping::page_size() {
