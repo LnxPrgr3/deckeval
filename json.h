@@ -25,15 +25,7 @@ struct json_allocator_heap {
 	size_t pos;
 
 	json_allocator_heap() { }
-
-	json_allocator_heap(size_t n) {
-		const auto page_size = mapping::page_size();
-		n = (n / page_size) * page_size + (n % page_size ? page_size : n);
-		options = mapping::options()
-			.length(n);
-		data = options.map();
-		pos = 0;
-	}
+	json_allocator_heap(size_t n);
 
 	json_allocator_heap &operator=(json_allocator_heap &&x) {
 		options = x.options;
@@ -43,8 +35,17 @@ struct json_allocator_heap {
 	}
 };
 
+class json_allocator_base {
+public:
+	json_allocator_base() : _heap(nullptr) { }
+	json_allocator_base(json_allocator_heap *heap) : _heap(heap) { }
+	void *allocate(size_t n, size_t alignment);
+protected:
+	json_allocator_heap *_heap;
+};
+
 template <class T>
-class json_allocator {
+class json_allocator : public json_allocator_base {
 public:
 	typedef T *pointer;
 	typedef const T *const_pointer;
@@ -59,23 +60,12 @@ public:
 	struct rebind {
 		typedef json_allocator<U> other;
 	};
-	json_allocator() : _heap(nullptr) { }
-	json_allocator(json_allocator_heap *heap) : _heap(heap) { }
+	json_allocator() { }
+	json_allocator(json_allocator_heap *heap) : json_allocator_base(heap) { }
 	template <class U>
-	json_allocator(const json_allocator<U> &x) {
-		_heap = x._heap;
-	}
+	json_allocator(const json_allocator<U> &x) : json_allocator_base(x._heap) { }
 	pointer allocate(size_t n) {
-		n *= sizeof(T);
-		size_t align = _heap->pos % alignof(T) ? alignof(T) - _heap->pos % alignof(T) : 0;
-		while(_heap->pos + align + n > _heap->data.size()) {
-			_heap->data.extend(_heap->options, _heap->data.size());
-		}
-		_heap->pos += align;
-		pointer rv = reinterpret_cast<pointer>(reinterpret_cast<char *>(_heap->data.data())+_heap->pos);
-		_heap->pos += n;
-		return rv;
-
+		return (pointer) json_allocator_base::allocate(n*sizeof(T), alignof(T));
 	}
 	template <class U, class ...Args>
 	void construct(U *p, Args&&... args) {
@@ -97,8 +87,6 @@ public:
 
 	template <class U>
 	friend class json_allocator;
-private:
-	json_allocator_heap *_heap;
 };
 
 class json_string {
@@ -106,17 +94,8 @@ public:
 	json_string(const char *data, size_t len) : _data(data), _len(len) {}
 	const char *c_str() const { return _data; }
 	size_t size() const { return _len; }
-	bool operator<(const json_string &x) const {
-		size_t n = _len < x._len ? _len : x._len;
-		auto res = memcmp(_data, x._data, n);
-		return res < 0 ? true :
-		       n == 0 ? _len < x._len :
-		       false;
-	}
-	bool operator==(const char *x) {
-		size_t n = strlen(x);
-		return n == _len && memcmp(_data, x, _len) == 0;
-	}
+	bool operator<(const json_string &x) const;
+	bool operator==(const char *x);
 private:
 	const char *_data;
 	size_t _len;
@@ -126,8 +105,22 @@ class json_object {};
 class json_array {};
 class json_end {};
 
+class json_value_base {
+protected:
+	enum {NONE, BOOLEAN, NUMBER, STRING, OBJECT, ARRAY, END} _type;
+public:
+	json_value_base(decltype(_type) type) : _type(type) { }
+	bool is_null() const { return _type == NONE; }
+	bool is_boolean() const { return _type == BOOLEAN; }
+	bool is_number() const { return _type == NUMBER; }
+	bool is_string() const { return _type == STRING; }
+	bool is_object() const { return _type == OBJECT; }
+	bool is_array() const { return _type == ARRAY; }
+	bool is_end() const { return _type == END; }
+};
+
 template <class Allocator>
-class json_value_imp {
+class json_value_imp : public json_value_base {
 public:
 	typedef typename Allocator::template rebind<std::pair<json_string, json_value_imp>>::other object_allocator;
 	typedef typename Allocator::template rebind<json_value_imp>::other array_allocator;
@@ -162,16 +155,16 @@ public:
 		const json_value_imp &_parent;
 	};
 
-	json_value_imp() : _type(NONE) {}
-	json_value_imp(const json_value_imp &x) {
+	json_value_imp() : json_value_base(NONE) {}
+	json_value_imp(const json_value_imp &x) : json_value_base(NONE) {
 		*this = x;
 	}
-	json_value_imp(bool value) : _type(BOOLEAN), _boolean(value) {}
-	json_value_imp(double value) : _type(NUMBER), _number(value) {}
-	json_value_imp(const char *start, const char *end) : _type(STRING), _string(start, end-start) {}
-	json_value_imp(const json_object &, const Allocator &allocator = Allocator()) : _type(OBJECT), _object(allocator) {}
-	json_value_imp(const json_array &, const Allocator &allocator = Allocator()) : _type(ARRAY), _array(allocator) {}
-	json_value_imp(const json_end &) : _type(END) {}
+	json_value_imp(bool value) : json_value_base(BOOLEAN), _boolean(value) {}
+	json_value_imp(double value) : json_value_base(NUMBER), _number(value) {}
+	json_value_imp(const char *start, const char *end) : json_value_base(STRING), _string(start, end-start) {}
+	json_value_imp(const json_object &, const Allocator &allocator = Allocator()) : json_value_base(OBJECT), _object(allocator) {}
+	json_value_imp(const json_array &, const Allocator &allocator = Allocator()) : json_value_base(ARRAY), _array(allocator) {}
+	json_value_imp(const json_end &) : json_value_base(END) {}
 	~json_value_imp() {
 		if(is_object())
 			_object.~map();
@@ -228,38 +221,31 @@ public:
 		}
 		return *this;
 	}
-	bool is_null() const { return _type == NONE; }
-	bool is_boolean() const { return _type == BOOLEAN; }
 	bool as_boolean() const {
 		if(!is_boolean())
 			throw json_exception("Invalid conversion to boolean");
 		return _boolean;
 	}
-	bool is_number() const { return _type == NUMBER; }
 	double as_number() const {
 		if(!is_number())
 			throw json_exception("Invalid conversion to double");
 		return _number;
 	}
-	bool is_string() const { return _type == STRING; }
 	json_string as_string() const {
 		if(!is_string())
 			throw json_exception("Invalid conversion to string");
 		return _string;
 	}
-	bool is_object() const { return _type == OBJECT; }
 	obj as_object() const {
 		if(!is_object())
 			throw json_exception("Invalid conversion to object");
 		return obj(this);
 	}
-	bool is_array() const { return _type == ARRAY; }
 	arr as_array() const {
 		if(!is_array())
 			throw json_exception("Invalid conversion to array");
 		return arr(this);
 	}
-	bool is_end() const { return _type == END; }
 	json_value_imp &insert(const json_string &key, const json_value_imp &value) {
 		if(!is_object())
 			throw json_exception("Invalid conversion to object");
@@ -292,7 +278,6 @@ public:
 		return x->second;
 	}
 protected:
-	enum {NONE, BOOLEAN, NUMBER, STRING, OBJECT, ARRAY, END} _type;
 	union {
 		bool _boolean;
 		double _number;
@@ -301,6 +286,9 @@ protected:
 		array _array;
 	};
 };
+
+extern template class json_value_imp<std::allocator<void>>;
+extern template class json_value_imp<json_allocator<char>>;
 
 typedef json_value_imp<std::allocator<void>> json_value;
 
@@ -314,24 +302,8 @@ public:
 		_heap = std::move(x._heap);
 		_allocator = x._allocator;
 	}
-	~json_document() {
-		value_type *self = dynamic_cast<value_type *>(this);
-		self->~value_type();
-		_type = NONE;
-	}
-	value_type convert(const json_value &x) {
-		if(x.is_boolean())
-			return value_type(x.as_boolean());
-		else if(x.is_number())
-			return value_type(x.as_number());
-		else if(x.is_string())
-			return value_type(x.as_string().c_str(), x.as_string().c_str()+x.as_string().size());
-		else if(x.is_object())
-			return value_type(json_object(), _allocator);
-		else if(x.is_array())
-			return value_type(json_array(), _allocator);
-		return value_type();
-	}
+	~json_document();
+	value_type convert(const json_value &x);
 	json_document &operator=(json_document &&x) {
 		_heap = std::move(x._heap);
 		_allocator = x._allocator;
@@ -342,11 +314,7 @@ public:
 		value_type::operator=(x);
 		return *this;
 	}
-	void shrink_to_fit() {
-		const auto page_size = mapping::page_size();
-		size_t size = (_heap.pos / page_size) * page_size + (_heap.pos % page_size ? page_size : 0);
-		_heap.data.truncate(size);
-	}
+	void shrink_to_fit();
 private:
 	json_allocator_heap _heap;
 	json_allocator<char> _allocator;
@@ -700,10 +668,12 @@ json_document json_parse(ForwardIterator begin, ForwardIterator end) {
 	return rv;
 }
 
-std::ostream &operator<<(std::ostream &out, const json_string &x) {
-	out.write(x.c_str(), x.size());
-	return out;
-}
+extern template char *json_skip_whitespace(char *, char *);
+extern template char *json_str_write_codepoint(char *, unsigned int);
+extern template int json_parse_hex(char *, char *);
+extern template json_document json_parse(char *, char *);
+
+std::ostream &operator<<(std::ostream &out, const json_string &x);
 
 template <class Allocator>
 std::ostream &operator<<(std::ostream &out, const json_value_imp<Allocator> &x) {
@@ -719,6 +689,10 @@ std::ostream &operator<<(std::ostream &out, const json_value_imp<Allocator> &x) 
 		out << "[object]";
 	else if(x.is_array())
 		out << "[array]";
+	return out;
 }
+
+extern template std::ostream &operator<<(std::ostream &, const json_value_imp<json_allocator<char>> &);
+extern template std::ostream &operator<<(std::ostream &, const json_value_imp<std::allocator<void>> &);
 
 #endif

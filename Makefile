@@ -8,3 +8,4 @@ deckeval: file.o mapping.o
 
 file.o: file.cc file.h
 mapping.o: mapping.cc mapping.h file.h
+json.o: json.h mapping.h
