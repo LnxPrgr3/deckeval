@@ -205,7 +205,7 @@ public:
 		}
 		json_string release_date() const { return _set["releaseDate"].as_string(); }
 		json_string border() const { return _set["border"].as_string(); }
-		json_string type() const { return _set["type"].as_string(); }
+		json_string type() const { return _set.has_key("type") ?  _set["type"].as_string() : json_string("", 0); }
 		json_string block() const { return _set["block"].as_string(); }
 		bool online_only() const {
 			return _set.has_key("onlineOnly") ? _set["onlineOnly"].as_boolean() : false;
