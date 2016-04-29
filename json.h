@@ -95,6 +95,7 @@ public:
 	const char *c_str() const { return _data; }
 	size_t size() const { return _len; }
 	bool operator<(const json_string &x) const;
+	bool operator==(const json_string &x) const;
 	bool operator==(const char *x);
 	bool operator!=(const char *x);
 private:
@@ -157,6 +158,7 @@ public:
 		auto end() const -> decltype(array().cend()) {
 			return _parent._array.cend();
 		}
+		size_t size() const { return _parent._array.size(); }
 		friend class json_value_imp;
 	private:
 		arr(const json_value_imp *x) : _parent(*x) {}

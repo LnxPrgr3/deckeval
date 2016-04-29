@@ -5,6 +5,25 @@
 #include "json.h"
 #include <iostream>
 #include <stdexcept>
+#include <unordered_map>
+
+namespace std {
+template <>
+struct hash<json_string> {
+	size_t operator()(const json_string &x) const noexcept {
+		static const size_t offset_basis = sizeof(size_t) == 4 ? 2166136261U : 14695981039346656037U;
+		static const size_t prime = sizeof(size_t) == 4 ? 16777619U : 1099511628211U;
+		const char *str = x.c_str();
+		const char *end = str+x.size();
+		size_t hash = offset_basis;
+		while(str != end) {
+			hash ^= *str++;
+			hash *= prime;
+		}
+		return hash;
+	}
+};
+}
 
 class card_database {
 public:
@@ -56,6 +75,7 @@ public:
 
 		iterator begin() const { return _collection.begin(); }
 		iterator end() const { return _collection.end(); }
+		size_t size() const { return _collection.size(); }
 
 		friend class card_database;
 	private:
@@ -219,8 +239,15 @@ public:
 		const json_value &_set;
 	};
 
-	card_database(const char *filename) : _mapping(load(filename)), _sets(parse(_mapping)) { }
+	card_database(const char *filename);
 	object_collection<card_set> sets() const { return object_collection<card_set>(_sets); }
+	card find_card(const char *name) {
+		json_string str(name, strlen(name));
+		auto res = _cards.find(str);
+		if(res == _cards.end())
+			throw std::runtime_error("Card not found!");
+		return res->second;
+	}
 private:
 	static mapping load(const char *filename) {
 		return mapping::options()
@@ -234,6 +261,7 @@ private:
 	}
 	mapping _mapping;
 	json_document _sets;
+	std::unordered_map<json_string, card> _cards;
 };
 
 std::ostream &operator<<(std::ostream &out, const card_database::cost &x);

@@ -242,6 +242,19 @@ void card_database::cost::parse(const char *str, const char *end) {
 	}
 }
 
+card_database::card_database(const char *filename) : _mapping(load(filename)), _sets(parse(_mapping)) {
+	size_t cards = 0;
+	for(auto set: sets()) {
+		cards += set.cards().size();
+	}
+	_cards.reserve(cards);
+	for(auto set: sets()) {
+		for(auto card: set.cards()) {
+			_cards.emplace(card.name(), card);
+		}
+	}
+}
+
 std::ostream &operator<<(std::ostream &out, const card_database::cost &x) {
 	if(!x.exists())
 		return out;

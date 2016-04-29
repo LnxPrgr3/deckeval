@@ -28,6 +28,10 @@ bool json_string::operator<(const json_string &x) const {
 		   false;
 }
 
+bool json_string::operator==(const json_string &x) const {
+	return x._len == _len && memcmp(_data, x._data, _len) == 0;
+}
+
 bool json_string::operator==(const char *x) {
 	size_t n = strlen(x);
 	return n == _len && memcmp(_data, x, _len) == 0;
