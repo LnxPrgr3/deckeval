@@ -112,6 +112,10 @@ public:
 		       n == 0 ? _len < x._len :
 		       false;
 	}
+	bool operator==(const char *x) {
+		size_t n = strlen(x);
+		return n == _len && memcmp(_data, x, _len) == 0;
+	}
 private:
 	const char *_data;
 	size_t _len;
@@ -128,6 +132,35 @@ public:
 	typedef typename Allocator::template rebind<json_value_imp>::other array_allocator;
 	typedef std::map<json_string, json_value_imp, std::less<json_string>, object_allocator> object;
 	typedef std::list<json_value_imp, array_allocator> array;
+
+	class obj {
+	public:
+		auto begin() -> decltype(object().cbegin()) const {
+			return _parent._object.cbegin();
+		}
+		auto end() -> decltype(object().cend()) const {
+			return _parent._object.cend();
+		}
+		friend class json_value_imp;
+	private:
+		obj(const json_value_imp *x) : _parent(*x) {}
+		const json_value_imp &_parent;
+	};
+
+	class arr {
+	public:
+		auto begin() -> decltype(array().cbegin()) const {
+			return _parent._array.cbegin();
+		}
+		auto end() -> decltype(array().cend()) const {
+			return _parent._array.cend();
+		}
+		friend class json_value_imp;
+	private:
+		arr(const json_value_imp *x) : _parent(*x) {}
+		const json_value_imp &_parent;
+	};
+
 	json_value_imp() : _type(NONE) {}
 	json_value_imp(const json_value_imp &x) {
 		*this = x;
@@ -214,7 +247,17 @@ public:
 		return _string;
 	}
 	bool is_object() const { return _type == OBJECT; }
+	obj as_object() const {
+		if(!is_object())
+			throw json_exception("Invalid conversion to object");
+		return obj(this);
+	}
 	bool is_array() const { return _type == ARRAY; }
+	arr as_array() const {
+		if(!is_array())
+			throw json_exception("Invalid conversion to array");
+		return arr(this);
+	}
 	bool is_end() const { return _type == END; }
 	json_value_imp &insert(const json_string &key, const json_value_imp &value) {
 		if(!is_object())
@@ -229,7 +272,16 @@ public:
 		_array.push_back(value);
 		return _array.back();
 	}
-	json_value_imp &operator[](const char *k) {
+	bool has_key(const char *k) const {
+		if(!is_object())
+			throw json_exception("Invalid conversion to object");
+		json_string key(k, strlen(k));
+		auto x = _object.find(key);
+		if(x == _object.end())
+			return false;
+		return true;
+	}
+	const json_value_imp &operator[](const char *k) const {
 		if(!is_object())
 			throw json_exception("Invalid conversion to object");
 		json_string key(k, strlen(k));
