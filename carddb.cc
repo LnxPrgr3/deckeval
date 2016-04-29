@@ -308,8 +308,10 @@ std::ostream &operator<<(std::ostream &out, const card_database::cost &x) {
 		out << "{2/W}";
 		wrote = true;
 	}
-	if(x.halfwhite())
+	if(x.halfwhite()) {
 		out << "{hw}";
+		wrote = true;
+	}
 	for(int i = 0; i < x.white(); ++i) {
 		out << "{W}";
 		wrote = true;
@@ -334,8 +336,10 @@ std::ostream &operator<<(std::ostream &out, const card_database::cost &x) {
 		out << "{2/U}";
 		wrote = true;
 	}
-	if(x.halfblue())
+	if(x.halfblue()) {
 		out << "{hu}";
+		wrote = true;
+	}
 	for(int i = 0; i < x.blue(); ++i) {
 		out << "{U}";
 		wrote = true;
@@ -356,8 +360,10 @@ std::ostream &operator<<(std::ostream &out, const card_database::cost &x) {
 		out << "{2/B}";
 		wrote = true;
 	}
-	if(x.halfblack())
+	if(x.halfblack()) {
 		out << "{hb}";
+		wrote = true;
+	}
 	for(int i = 0; i < x.black(); ++i) {
 		out << "{B}";
 		wrote = true;
@@ -374,8 +380,10 @@ std::ostream &operator<<(std::ostream &out, const card_database::cost &x) {
 		out << "{2/R}";
 		wrote = true;
 	}
-	if(x.halfred())
+	if(x.halfred()) {
 		out << "{hr}";
+		wrote = true;
+	}
 	for(int i = 0; i < x.red(); ++i) {
 		out << "{R}";
 		wrote = true;
@@ -388,8 +396,10 @@ std::ostream &operator<<(std::ostream &out, const card_database::cost &x) {
 		out << "{2/G}";
 		wrote = true;
 	}
-	if(x.halfgreen())
+	if(x.halfgreen()) {
 		out << "{hg}";
+		wrote = true;
+	}
 	for(int i = 0; i < x.green(); ++i) {
 		out << "{G}";
 		wrote = true;
