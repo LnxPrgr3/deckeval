@@ -129,11 +129,18 @@ public:
 
 	class obj {
 	public:
-		auto begin() -> decltype(object().cbegin()) const {
+		auto begin() const -> decltype(object().cbegin()) {
 			return _parent._object.cbegin();
 		}
-		auto end() -> decltype(object().cend()) const {
+		auto end() const -> decltype(object().cend()) {
 			return _parent._object.cend();
+		}
+		const json_value_imp &operator[](const char *k) const {
+			json_string key(k, strlen(k));
+			auto x = _parent._object.find(key);
+			if(x == _parent._object.end())
+				throw json_exception("Key not found");
+			return x->second;
 		}
 		friend class json_value_imp;
 	private:
@@ -143,10 +150,10 @@ public:
 
 	class arr {
 	public:
-		auto begin() -> decltype(array().cbegin()) const {
+		auto begin() const -> decltype(array().cbegin()) {
 			return _parent._array.cbegin();
 		}
-		auto end() -> decltype(array().cend()) const {
+		auto end() const -> decltype(array().cend()) {
 			return _parent._array.cend();
 		}
 		friend class json_value_imp;
@@ -301,6 +308,7 @@ public:
 	json_document(json_document &&x) {
 		_heap = std::move(x._heap);
 		_allocator = x._allocator;
+		value_type::operator=(std::move(x));
 	}
 	~json_document();
 	value_type convert(const json_value &x);
