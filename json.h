@@ -8,6 +8,7 @@
 #include <list>
 #include <map>
 #include <new>
+#include <iostream>
 
 class json_exception : public std::exception {
 public:
@@ -644,6 +645,27 @@ json_document json_parse(ForwardIterator begin, ForwardIterator end) {
 	});
 	rv.shrink_to_fit();
 	return rv;
+}
+
+std::ostream &operator<<(std::ostream &out, const json_string &x) {
+	out.write(x.c_str(), x.size());
+	return out;
+}
+
+template <class Allocator>
+std::ostream &operator<<(std::ostream &out, const json_value_imp<Allocator> &x) {
+	if(x.is_null())
+		out << "null";
+	else if(x.is_boolean())
+		out << x.as_boolean();
+	else if(x.is_number())
+		out << x.as_number();
+	else if(x.is_string())
+		out << x.as_string();
+	else if(x.is_object())
+		out << "[object]";
+	else if(x.is_array())
+		out << "[array]";
 }
 
 #endif
