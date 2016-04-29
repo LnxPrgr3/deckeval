@@ -66,8 +66,8 @@ public:
 	pointer allocate(size_t n) {
 		n *= sizeof(T);
 		size_t align = _heap->pos % alignof(T) ? alignof(T) - _heap->pos % alignof(T) : 0;
-		if(_heap->pos + align + n > _heap->data.size()) {
-			throw std::bad_alloc();
+		while(_heap->pos + align + n > _heap->data.size()) {
+			_heap->data.extend(_heap->options, _heap->data.size());
 		}
 		_heap->pos += align;
 		pointer rv = reinterpret_cast<pointer>(reinterpret_cast<char *>(_heap->data.data())+_heap->pos);

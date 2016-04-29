@@ -40,6 +40,19 @@ mapping::options &mapping::options::file(const class file &file) {
 	return *this;
 }
 
+void mapping::extend(options options, size_t size) {
+	void *addr = reinterpret_cast<char *>(_addr) + size;
+	mapping extent = options
+		.addr(addr, false)
+		.length(size)
+		.map();
+	if(extent._addr != addr)
+		throw std::bad_alloc();
+	extent._addr = MAP_FAILED;
+	_length += size;
+	_valid_length += size;
+}
+
 void mapping::truncate(size_t size) {
 	void *drop = reinterpret_cast<char *>(_addr) + size;
 	if(munmap(drop, _length - size))

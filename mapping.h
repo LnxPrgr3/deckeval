@@ -63,6 +63,7 @@ public:
 	void *data() { return _addr; }
 	size_t size() const { return _valid_length; }
 	size_t &size() { return _valid_length; }
+	void extend(options options, size_t size);
 	void truncate(size_t size);
 	static long page_size();
 	mapping &operator=(mapping &&x) {
