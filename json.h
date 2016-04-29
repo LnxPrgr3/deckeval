@@ -96,6 +96,7 @@ public:
 	size_t size() const { return _len; }
 	bool operator<(const json_string &x) const;
 	bool operator==(const char *x);
+	bool operator!=(const char *x);
 private:
 	const char *_data;
 	size_t _len;
