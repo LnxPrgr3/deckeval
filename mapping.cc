@@ -39,3 +39,13 @@ mapping::options &mapping::options::file(const class file &file) {
 	_valid_length = size;
 	return *this;
 }
+
+void mapping::truncate(size_t size) {
+	void *drop = reinterpret_cast<char *>(_addr) + size;
+	if(munmap(drop, _length - size))
+		throw std::runtime_error(strerror(errno));
+}
+
+long mapping::page_size() {
+	return ::page_size();
+}

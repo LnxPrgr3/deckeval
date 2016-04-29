@@ -3,7 +3,9 @@
 #include <exception>
 #include <cmath>
 #include <cstring>
+#include <cstddef>
 #include <vector>
+#include <list>
 #include <map>
 #include <new>
 
@@ -13,6 +15,88 @@ public:
 	const char *what() const noexcept { return _what; }
 private:
 	const char * const _what;
+};
+
+struct json_allocator_heap {
+	mapping::options options;
+	mapping data;
+	size_t pos;
+
+	json_allocator_heap() { }
+
+	json_allocator_heap(size_t n) {
+		const auto page_size = mapping::page_size();
+		n = (n / page_size) * page_size + (n % page_size ? page_size : n);
+		options = mapping::options()
+			.length(n);
+		data = options.map();
+		pos = 0;
+	}
+
+	json_allocator_heap &operator=(json_allocator_heap &&x) {
+		options = x.options;
+		data = std::move(x.data);
+		pos = x.pos;
+		return *this;
+	}
+};
+
+template <class T>
+class json_allocator {
+public:
+	typedef T *pointer;
+	typedef const T *const_pointer;
+	typedef void *void_pointer;
+	typedef const void *const_void_pointer;
+	typedef T &reference;
+	typedef const T &const_reference;
+	typedef T value_type;
+	typedef size_t size_type;
+	typedef ptrdiff_t difference_type;
+	template <class U>
+	struct rebind {
+		typedef json_allocator<U> other;
+	};
+	json_allocator() : _heap(nullptr) { }
+	json_allocator(json_allocator_heap *heap) : _heap(heap) { }
+	template <class U>
+	json_allocator(const json_allocator<U> &x) {
+		_heap = x._heap;
+	}
+	pointer allocate(size_t n) {
+		n *= sizeof(T);
+		size_t align = _heap->pos % alignof(T) ? alignof(T) - _heap->pos % alignof(T) : 0;
+		if(_heap->pos + align + n > _heap->data.size()) {
+			throw std::bad_alloc();
+		}
+		_heap->pos += align;
+		pointer rv = reinterpret_cast<pointer>(reinterpret_cast<char *>(_heap->data.data())+_heap->pos);
+		_heap->pos += n;
+		return rv;
+
+	}
+	template <class U, class ...Args>
+	void construct(U *p, Args&&... args) {
+		new ((void *)p) U(std::forward<Args>(args)...);
+	}
+	template <class U>
+	void destroy(U *p) {
+		p->~U();
+	}
+	void deallocate(pointer ptr, size_t n) { }
+	json_allocator &operator=(const json_allocator &x) {
+		_heap = x._heap;
+		return *this;
+	}
+	template <class U>
+	bool operator==(const json_allocator<U> &x) { return _heap == x._heap; }
+	template <class U>
+	bool operator!=(const json_allocator<U> &x) { return _heap != x._heap; }
+
+	template <class U>
+	friend class json_allocator;
+private:
+	json_allocator_heap *_heap;
 };
 
 class json_string {
@@ -36,27 +120,34 @@ class json_object {};
 class json_array {};
 class json_end {};
 
-class json_value {
+template <class Allocator>
+class json_value_imp {
 public:
-	json_value() : _type(NONE) {}
-	json_value(const json_value &x) {
+	typedef typename Allocator::template rebind<std::pair<json_string, json_value_imp>>::other object_allocator;
+	typedef typename Allocator::template rebind<json_value_imp>::other array_allocator;
+	typedef std::map<json_string, json_value_imp, std::less<json_string>, object_allocator> object;
+	typedef std::list<json_value_imp, array_allocator> array;
+	json_value_imp() : _type(NONE) {}
+	json_value_imp(const json_value_imp &x) {
 		*this = x;
 	}
-	json_value(bool value) : _type(BOOLEAN), _boolean(value) {}
-	json_value(double value) : _type(NUMBER), _number(value) {}
-	json_value(const char *start, const char *end) : _type(STRING), _string(start, end-start) {}
-	json_value(const json_object &) : _type(OBJECT), _object() {}
-	json_value(const json_array &) : _type(ARRAY), _array() {}
-	json_value(const json_end &) : _type(END) {}
-	~json_value() {
+	json_value_imp(bool value) : _type(BOOLEAN), _boolean(value) {}
+	json_value_imp(double value) : _type(NUMBER), _number(value) {}
+	json_value_imp(const char *start, const char *end) : _type(STRING), _string(start, end-start) {}
+	json_value_imp(const json_object &, const Allocator &allocator = Allocator()) : _type(OBJECT), _object(allocator) {}
+	json_value_imp(const json_array &, const Allocator &allocator = Allocator()) : _type(ARRAY), _array(allocator) {}
+	json_value_imp(const json_end &) : _type(END) {}
+	~json_value_imp() {
 		if(is_object())
 			_object.~map();
 		else if(is_array())
-			_array.~vector();
+			_array.~list();
 	}
-	json_value &operator=(const json_value &x) {
+	json_value_imp &operator=(const json_value_imp &x) {
 		_type = x._type;
 		switch(_type) {
+		case NONE:
+			break;
 		case BOOLEAN:
 			_boolean = x._boolean;
 			break;
@@ -67,10 +158,35 @@ public:
 			new(&_string) json_string(x._string);
 			break;
 		case OBJECT:
-			new(&_object) std::map<json_string, json_value>(x._object);
+			new(&_object) object(x._object);
 			break;
 		case ARRAY:
-			new(&_array) std::vector<json_value>(x._array);
+			new(&_array) array(x._array);
+			break;
+		case END:
+			break;
+		}
+		return *this;
+	}
+	json_value_imp &operator=(json_value_imp &&x) {
+		_type = x._type;
+		switch(_type) {
+		case NONE:
+			break;
+		case BOOLEAN:
+			_boolean = x._boolean;
+			break;
+		case NUMBER:
+			_number = x._number;
+			break;
+		case STRING:
+			new(&_string) json_string(x._string);
+			break;
+		case OBJECT:
+			new(&_object) object(std::move(x._object));
+			break;
+		case ARRAY:
+			new(&_array) array(std::move(x._array));
 			break;
 		case END:
 			break;
@@ -79,7 +195,7 @@ public:
 	}
 	bool is_null() const { return _type == NONE; }
 	bool is_boolean() const { return _type == BOOLEAN; }
-	bool as_boolean() {
+	bool as_boolean() const {
 		if(!is_boolean())
 			throw json_exception("Invalid conversion to boolean");
 		return _boolean;
@@ -99,36 +215,87 @@ public:
 	bool is_object() const { return _type == OBJECT; }
 	bool is_array() const { return _type == ARRAY; }
 	bool is_end() const { return _type == END; }
-	json_value &insert(const json_string &key, const json_value &value) {
+	json_value_imp &insert(const json_string &key, const json_value_imp &value) {
 		if(!is_object())
 			throw json_exception("Invalid conversion to object");
 		auto &rv = _object[key];
 		rv = value;
 		return rv;
 	}
-	json_value &insert(const json_value &value) {
+	json_value_imp &insert(const json_value_imp &value) {
 		if(!is_array())
 			throw json_exception("Invalid conversion to array");
 		_array.push_back(value);
 		return _array.back();
 	}
-	void reserve(size_t n) {
-		if(is_array())
-			_array.reserve(n);
+	json_value_imp &operator[](const char *k) {
+		if(!is_object())
+			throw json_exception("Invalid conversion to object");
+		json_string key(k, strlen(k));
+		auto x = _object.find(key);
+		if(x == _object.end())
+			throw json_exception("Key not found");
+		return x->second;
 	}
-	void shrink_to_fit() {
-		if(is_array())
-			_array.shrink_to_fit();
-	}
-private:
+protected:
 	enum {NONE, BOOLEAN, NUMBER, STRING, OBJECT, ARRAY, END} _type;
 	union {
 		bool _boolean;
 		double _number;
 		json_string _string;
-		std::map<json_string, json_value> _object;
-		std::vector<json_value> _array;
+		object _object;
+		array _array;
 	};
+};
+
+typedef json_value_imp<std::allocator<void>> json_value;
+
+class json_document : public json_value_imp<json_allocator<char>> {
+public:
+	typedef json_value_imp<json_allocator<char>> value_type;
+	json_document() { }
+	json_document(size_t n) : _heap(n), _allocator(&_heap) { }
+	json_document(const json_document &) = delete;
+	json_document(json_document &&x) {
+		_heap = std::move(x._heap);
+		_allocator = x._allocator;
+	}
+	~json_document() {
+		value_type *self = dynamic_cast<value_type *>(this);
+		self->~value_type();
+		_type = NONE;
+	}
+	value_type convert(const json_value &x) {
+		if(x.is_boolean())
+			return value_type(x.as_boolean());
+		else if(x.is_number())
+			return value_type(x.as_number());
+		else if(x.is_string())
+			return value_type(x.as_string().c_str(), x.as_string().c_str()+x.as_string().size());
+		else if(x.is_object())
+			return value_type(json_object(), _allocator);
+		else if(x.is_array())
+			return value_type(json_array(), _allocator);
+		return value_type();
+	}
+	json_document &operator=(json_document &&x) {
+		_heap = std::move(x._heap);
+		_allocator = x._allocator;
+		value_type::operator=(std::move(x));
+		return *this;
+	}
+	json_document &operator=(const value_type &x) {
+		value_type::operator=(x);
+		return *this;
+	}
+	void shrink_to_fit() {
+		const auto page_size = mapping::page_size();
+		size_t size = (_heap.pos / page_size) * page_size + (_heap.pos % page_size ? page_size : 0);
+		_heap.data.truncate(size);
+	}
+private:
+	json_allocator_heap _heap;
+	json_allocator<char> _allocator;
 };
 
 template <class ForwardIterator>
@@ -348,6 +515,9 @@ ForwardIterator json_parse_string(ForwardIterator begin, ForwardIterator end, Ca
 }
 
 template <class ForwardIterator, class Callback>
+ForwardIterator json_parse(ForwardIterator begin, ForwardIterator end, Callback &&cb);
+
+template <class ForwardIterator, class Callback>
 ForwardIterator json_parse_object(ForwardIterator begin, ForwardIterator end, Callback &&cb) {
 	cb(json_value(json_object()));
 	begin = json_skip_whitespace(begin, end);
@@ -435,46 +605,44 @@ ForwardIterator json_parse(ForwardIterator begin, ForwardIterator end, Callback 
 }
 
 template <class ForwardIterator>
-json_value json_parse(ForwardIterator begin, ForwardIterator end) {
-	json_value rv, key;
-	std::vector<json_value *> stack;
+json_document json_parse(ForwardIterator begin, ForwardIterator end) {
+	json_document rv((end-begin)*4);
+	json_value key;
+	std::vector<json_document::value_type *> stack;
 	bool root_set = false, key_set = false;
 	json_parse(begin, end, [&](const json_value &x) {
 		if(!root_set) {
-			rv = x;
+			rv = rv.convert(x);
 			root_set = true;
 			if(x.is_object() || x.is_array()) {
-				rv.reserve(128);
 				stack.push_back(&rv);
 			}
 			return;
 		}
 		if(x.is_end()) {
-			stack.back()->shrink_to_fit();
 			stack.pop_back();
 			return;
 		}
-		json_value *cur = stack.back();
+		auto cur = stack.back();
 		if(cur->is_object()) {
 			if(!key_set) {
 				key = x;
 				key_set = true;
 			} else {
 				key_set = false;
-				auto &val = cur->insert(key.as_string(), x);
+				auto &val = cur->insert(key.as_string(), rv.convert(x));
 				if(val.is_array() || val.is_object()) {
-					val.reserve(128);
 					stack.push_back(&val);
 				}
 			}
 		} else {
-			auto &val = cur->insert(x);
+			auto &val = cur->insert(rv.convert(x));
 			if(val.is_array() || val.is_object()) {
-				val.reserve(128);
 				stack.push_back(&val);
 			}
 		}
 	});
+	rv.shrink_to_fit();
 	return rv;
 }
 

@@ -3,17 +3,18 @@
 #include "file.h"
 #include <sys/mman.h>
 #include <unistd.h>
+#include <utility>
 
 class mapping {
 public:
 	mapping(const mapping &) = delete;
 	mapping(mapping &&x) {
-		_addr = x._addr;
-		_length = x._length;
-		_valid_length = x._valid_length;
-		x._addr = MAP_FAILED;
-		x._length = -1;
-		x._valid_length = -1;
+		*this = std::move(x);
+	}
+	mapping() {
+		_addr = MAP_FAILED;
+		_length = -1;
+		_valid_length = -1;
 	}
 	mapping(void *addr, size_t length, int prot, int flags, int fd, off_t offset, size_t valid_length);
 	~mapping();
@@ -26,6 +27,16 @@ public:
 			_flags = MAP_ANONYMOUS | MAP_PRIVATE;
 			_fd = -1;
 			_offset = 0;
+		}
+		options &addr(void *addr, bool force = true) {
+			_addr = addr;
+			_flags = (_flags & ~MAP_FIXED) | (force ? MAP_FIXED : 0);
+			return *this;
+		}
+		options &length(size_t length) {
+			_length = length;
+			_valid_length = length;
+			return *this;
 		}
 		options &file(const file &file);
 		options &write(bool write_to_backing = true) {
@@ -52,6 +63,18 @@ public:
 	void *data() { return _addr; }
 	size_t size() const { return _valid_length; }
 	size_t &size() { return _valid_length; }
+	void truncate(size_t size);
+	static long page_size();
+	mapping &operator=(mapping &&x) {
+		this->~mapping();
+		_addr = x._addr;
+		_length = x._length;
+		_valid_length = x._valid_length;
+		x._addr = MAP_FAILED;
+		x._length = -1;
+		x._valid_length = -1;
+		return *this;
+	}
 private:
 	void *_addr;
 	size_t _length;
