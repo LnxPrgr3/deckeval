@@ -149,17 +149,17 @@ public:
 		             _2green:6,
 		             _greenphyrexian:6,
 		             _colorless:6,
-					 _x:2,
-					 _y:2,
-					 _z:2,
-					 _halfwhite:1,
-					 _halfblue:1,
-					 _halfblack:1,
-					 _halfred:1,
-					 _halfgreen:1,
+		             _x:2,
+		             _y:2,
+		             _z:2,
+		             _halfwhite:1,
+		             _halfblue:1,
+		             _halfblack:1,
+		             _halfred:1,
+		             _halfgreen:1,
 		             _exists:1,
 		             _tap:1,
-					 _untap:1;
+		             _untap:1;
 		unsigned int _generic;
 	};
 
