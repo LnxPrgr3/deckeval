@@ -2,6 +2,7 @@
 #include <cerrno>
 #include <cstring>
 #include <stdexcept>
+#include <new>
 
 static long page_size() {
 	static long res = -1;
