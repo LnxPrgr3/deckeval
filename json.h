@@ -606,7 +606,7 @@ ForwardIterator json_parse(ForwardIterator begin, ForwardIterator end, Callback 
 
 template <class ForwardIterator>
 json_document json_parse(ForwardIterator begin, ForwardIterator end) {
-	json_document rv((end-begin)*4);
+	json_document rv((end-begin)*sizeof(void *));
 	json_value key;
 	std::vector<json_document::value_type *> stack;
 	bool root_set = false, key_set = false;
