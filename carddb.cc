@@ -244,6 +244,18 @@ void card_database::cost::parse(const char *str, const char *end) {
 	}
 }
 
+void card_database::deck::init() {
+	json_document doc = json_parse(&*_str.begin(), &*_str.end());
+	auto val = doc.as_object();
+	_name = val["name"].as_string();
+	for(auto &card: val["deck"].as_array()) {
+		_deck.emplace_back(_parent.find_card(card["name"].as_string()), (int)card["count"].as_number());
+	}
+	for(auto &card: val["sideboard"].as_array()) {
+		_sideboard.emplace_back(_parent.find_card(card["name"].as_string()), (int)card["count"].as_number());
+	}
+}
+
 card_database::card_database(const char *filename) : _mapping(load(filename)), _sets(parse(_mapping)) {
 	size_t cards = 0;
 	for(auto set: sets()) {

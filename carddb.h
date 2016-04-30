@@ -238,14 +238,45 @@ public:
 		const json_value &_set;
 	};
 
+	class deck {
+	public:
+		friend class card_database;
+		struct deck_entry {
+			card entry;
+			int count;
+
+			deck_entry(card entry, int count) : entry(entry), count(count) { }
+		};
+		const std::vector<deck_entry> &cards() const { return _deck; }
+		const std::vector<deck_entry> &sideboard() const { return _sideboard; }
+	private:
+		deck(card_database *parent, const std::string &str) : _parent(*parent), _str(str), _name("", 0) {
+			init();
+		}
+		deck(card_database *parent, std::string &&str) : _parent(*parent), _str(std::move(str)), _name("", 0) {
+			init();
+		}
+		void init();
+		card_database &_parent;
+		std::string _str;
+		json_string _name;
+		std::vector<deck_entry> _deck;
+		std::vector<deck_entry> _sideboard;
+	};
+
 	card_database(const char *filename);
 	object_collection<card_set> sets() const { return object_collection<card_set>(_sets); }
-	card find_card(const char *name) {
-		json_string str(name, strlen(name));
-		auto res = _cards.find(str);
+	card find_card(const json_string &name) {
+		auto res = _cards.find(name);
 		if(res == _cards.end())
-			throw std::runtime_error("Card not found!");
+			throw std::runtime_error(std::string("Card not found: ") + std::string(name.c_str(), name.size()));
 		return res->second;
+	}
+	card find_card(const char *name) {
+		return find_card(json_string(name, strlen(name)));
+	}
+	deck make_deck(std::string str) {
+		return deck(this, str);
 	}
 private:
 	static mapping load(const char *filename);

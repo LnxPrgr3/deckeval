@@ -2,6 +2,7 @@
 #define DECKEVAL_FILE_H
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <string>
 
 class file {
 public:
@@ -39,6 +40,7 @@ public:
 	};
 	int fd() const { return _fd; }
 	off_t size() const;
+	std::string contents();
 private:
 	int _fd;
 };
