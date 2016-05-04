@@ -456,7 +456,7 @@ public:
 
 class json_document : public json_var {
 public:
-	//json_document() { }
+	json_document() { }
 	json_document(size_t n) : _heap(n), _allocator(&_heap) { }
 	json_document(const json_document &) = delete;
 	json_document(json_document &&x) : _heap(std::move(x._heap)), _allocator(&_heap) {
@@ -466,6 +466,7 @@ public:
 		json_var::operator=(std::move(x));
 		return *this;
 	}
+	void shrink_to_fit();
 private:
 	json_allocator_heap _heap;
 	json_allocator<char> _allocator;

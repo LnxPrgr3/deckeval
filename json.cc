@@ -353,6 +353,12 @@ void *json_allocator_base::allocate(size_t n, size_t alignment) {
 	return rv;
 }
 
+void json_document::shrink_to_fit() {
+	const auto page_size = mapping::page_size();
+	size_t size = (_heap.pos / page_size) * page_size + (_heap.pos % page_size ? page_size : 0);
+	_heap.data.truncate(size);
+}
+
 char *json_skip_whitespace(char *begin, char *end) {
 	while(begin != end) {
 		switch(*begin) {
@@ -752,9 +758,9 @@ struct json_parse_callbacks : public json_callbacks {
 	std::vector<object> stack;
 };
 
-
 json_document json_parse(char *begin, char *end) {
 	json_parse_callbacks cb((end-begin)*sizeof(void *));
 	json_parse(begin, end, cb);
+	cb.rv.shrink_to_fit();
 	return std::move(cb.rv);
 }
