@@ -1,22 +1,384 @@
 #ifndef DECKEVAL_JSON_H
 #define DECKEVAL_JSON_H
-#include <exception>
-#include <cmath>
+#include <iostream>
+#include <new>
 #include <cstring>
 #include <cstddef>
-#include <vector>
-#include <list>
-#include <map>
-#include <new>
-#include <iostream>
 #include "mapping.h"
 
-class json_exception : public std::exception {
+class json_boolean;
+class json_number;
+class json_string;
+class json_array;
+class json_object;
+class json_var;
+
+class json_value {
 public:
-	json_exception(const char *msg) : _what(msg) {}
-	const char *what() const noexcept { return _what; }
+	virtual ~json_value();
+	virtual operator json_boolean() const = 0;
+	virtual operator json_number() const = 0;
+	virtual operator json_string() const = 0;
+	virtual operator json_array() const = 0;
+	virtual operator json_object() const = 0;
+};
+
+class json_null : public json_value {
+public:
+	operator json_boolean() const;
+	operator json_number() const;
+	operator json_string() const;
+	operator json_array() const;
+	operator json_object() const;
+};
+
+class json_boolean : public json_value {
+public:
+	json_boolean(bool value) : _value{value} { }
+	operator json_boolean() const;
+	operator json_number() const;
+	operator json_string() const;
+	operator json_array() const;
+	operator json_object() const;
+	operator bool() const { return _value; }
 private:
-	const char * const _what;
+	bool _value;
+};
+
+class json_number : public json_value {
+public:
+	json_number(double value) : _value(value) { }
+	operator json_boolean() const;
+	operator json_number() const;
+	operator json_string() const;
+	operator json_array() const;
+	operator json_object() const;
+	operator double() const { return _value; }
+private:
+	double _value;
+};
+
+class json_string : public json_value {
+public:
+	json_string(const char *value, size_t size, bool dynamic) {
+		if(dynamic) {
+			char *str = new char[size];
+			memcpy(str, value, size);
+			_value = str;
+			_dynamic = true;
+			_size = size;
+		} else {
+			_value = value;
+			_dynamic = false;
+			_size = size;
+		}
+	}
+	json_string(const char *value, size_t size) : json_string(value, size, false) { }
+	json_string(const char *value) : json_string(value, strlen(value)) { }
+	json_string(const json_string &x) : json_string(x._value, x._size, x._dynamic) { }
+	json_string(json_string &&x) {
+		_value = x._value;
+		_dynamic = x._dynamic;
+		_size = x._size;
+		x._value = nullptr;
+		x._dynamic = false;
+		x._size = 0;
+	}
+	~json_string() {
+		if(_dynamic) {
+			char *str = const_cast<char *>(_value);
+			delete[] str;
+		}
+	}
+	json_string operator=(const json_string &x) {
+		if(this != &x) {
+			this->~json_string();
+			new(this) json_string(x._value, x._size, x._dynamic);
+		}
+		return *this;
+	}
+	const char *c_str() const { return _value; }
+	size_t size() const { return _size; }
+	operator json_boolean() const;
+	operator json_number() const;
+	operator json_string() const;
+	operator json_array() const;
+	operator json_object() const;
+	bool operator==(const json_string &x) const { return _size == x._size && memcmp(_value, x._value, _size) == 0; }
+private:
+	const char *_value;
+	size_t _size:(sizeof(size_t)*8-1),
+	       _dynamic:1;
+};
+
+inline std::ostream &operator<<(std::ostream &out, const json_string &x) {
+	out.write(x.c_str(), x.size());
+	return out;
+}
+
+template <class Allocator>
+class json_array_imp;
+
+template <class Allocator>
+class json_object_imp;
+
+class json_array : public json_value {
+protected:
+	class node;
+public:
+	class const_iterator {
+	public:
+		const_iterator(const const_iterator &x) : _pos(x._pos) { }
+		const_iterator &operator++();
+		const json_var &operator*() const;
+		const json_var *operator->() const;
+		bool operator!=(const const_iterator &x) const;
+		bool operator==(const const_iterator &x) const;
+	protected:
+		const_iterator(node *pos) : _pos(pos) { }
+		const node *_pos;
+
+		friend class json_array;
+	};
+
+	class iterator : public const_iterator {
+	public:
+		iterator(const iterator &x) : const_iterator(x) { }
+		json_var &operator*();
+		json_var *operator->();
+	private:
+		iterator(node *pos) : const_iterator(pos) { }
+
+		friend class json_array;
+	};
+
+	json_array() : _head(nullptr), _size(0) { }
+	json_array(const json_array &x) = default;
+	json_array(json_array &&x) : _head(x._head), _size(x._size) {
+		x._head = nullptr;
+		x._size = 0;
+	}
+	virtual ~json_array() { }
+
+	const_iterator begin() const { return const_iterator(_head); }
+	iterator begin() { return iterator(_head); }
+	const_iterator end() const { return const_iterator(nullptr); }
+	iterator end() { return iterator(nullptr); }
+	const size_t size() const { return _size; }
+
+	operator json_boolean() const;
+	operator json_number() const;
+	operator json_string() const;
+	operator json_array() const;
+	operator json_object() const;
+protected:
+	node *_head;
+	size_t _size;
+};
+
+template <class Allocator = std::allocator<json_var>>
+class json_array_imp : public json_array {
+public:
+	json_array_imp(const Allocator &allocator = Allocator()) : _allocator(allocator), _tail(&_head) { }
+	json_array_imp(json_array_imp &&x) : _allocator(x._allocator), _tail(x._tail == &x._head ? &_head : x._tail), json_array(std::move(x)) { }
+	json_array_imp(json_array &&x, const Allocator allocator = Allocator()) : json_array(std::move(x)), _allocator(allocator), _tail(nullptr) { }
+	~json_array_imp();
+	void push_back(const json_value &value);
+	void push_back(const json_var &value);
+	template <class A2>
+	void push_back(json_array_imp<A2> &&value);
+	template <class A2>
+	void push_back(json_object_imp<A2> &&object);
+private:
+	typedef typename Allocator::template rebind<node>::other allocator;
+	node **_tail;
+	allocator _allocator;
+
+	friend class json_array;
+};
+
+class json_object : public json_value {
+protected:
+	class node;
+public:
+	class const_iterator {
+	public:
+		const_iterator(const const_iterator &x) : _pos(x._pos) { }
+		const_iterator &operator++();
+		const std::pair<json_string, json_var> &operator*() const;
+		const std::pair<json_string, json_var> *operator->() const;
+		bool operator!=(const const_iterator &x) const;
+		bool operator==(const const_iterator &x) const;
+	protected:
+		const_iterator(node *pos) : _pos(pos) { }
+		const node *_pos;
+
+		friend class json_object;
+	};
+
+	class iterator : public const_iterator {
+	public:
+		iterator(const iterator &x) : const_iterator(x) { }
+		std::pair<json_string, json_var> &operator*();
+		std::pair<json_string, json_var> *operator->();
+	private:
+		iterator(node *pos) : const_iterator(pos) { }
+
+		friend class json_object;
+	};
+
+	json_object() : _head(nullptr), _index(nullptr) { }
+	json_object(const json_object &x) = default;
+	json_object(json_object &&x) : _head(x._head), _index(x._index) {
+		x._head = nullptr;
+		x._index = nullptr;
+	}
+	virtual ~json_object() { }
+
+	const_iterator begin() const { return const_iterator(_head); }
+	iterator begin() { return iterator(_head); }
+	const_iterator end() const { return const_iterator(nullptr); }
+	iterator end() { return iterator(nullptr); }
+
+	bool has_key(const json_string &key) const;
+	const json_var &operator[](const json_string &key) const;
+	json_var &operator[](const json_string &key);
+
+	operator json_boolean() const;
+	operator json_number() const;
+	operator json_string() const;
+	operator json_array() const;
+	operator json_object() const;
+protected:
+	void index(size_t buckets);
+	node *_head;
+	node **_index;
+};
+
+template <class Allocator = std::allocator<std::pair<json_string, json_var>>>
+class json_object_imp : public json_object {
+public:
+	json_object_imp(const Allocator &allocator = Allocator()) : _allocator(allocator), _tail(&_head), _size(0) { }
+	json_object_imp(json_object_imp &&x) : _allocator(x._allocator), _tail(x._tail == &x._head ? &_head : x._tail), _size(x._size), json_object(std::move(x)) { }
+	json_object_imp(json_object &&x, const Allocator &allocator = Allocator()) : json_object(std::move(x)), _allocator(allocator), _tail(nullptr), _size(0) { }
+	~json_object_imp();
+	void push_back(const json_string &key, const json_value &value);
+	void push_back(const json_string &key, const json_var &value);
+	template <class A2>
+	void push_back(const json_string &key, json_array_imp<A2> &&value);
+	template <class A2>
+	void push_back(const json_string &key, json_object_imp<A2> &&object);
+	void index();
+private:
+	typedef typename Allocator::template rebind<node>::other allocator;
+	node **_tail;
+	size_t _size;
+	allocator _allocator;
+
+	friend class json_object;
+};
+
+template <class Allocator>
+class json_var_imp;
+
+class json_var : public json_value {
+public:
+	json_var() : _type(NONE), _null() { }
+	json_var(const json_value &x);
+	json_var(const json_var &x);
+	template <class Allocator>
+	json_var(json_array_imp<Allocator> &&x) {
+		_type = ARRAY;
+		new ((void *)&_array) json_array(std::move(x));
+	}
+	template <class Allocator>
+	json_var(json_object_imp<Allocator> &&x) {
+		_type = OBJECT;
+		x.index();
+		new ((void *)&_object) json_object(std::move(x));
+	}
+	json_var(double x) {
+		_type = NUMBER;
+		new ((void *)&_number) json_number(x);
+	}
+	json_var(const char *x) {
+		_type = STRING;
+		new ((void *)&_string) json_string(x);
+	}
+	virtual ~json_var();
+	json_var &operator=(const json_var &x);
+	const json_value &value() const;
+	operator json_boolean() const;
+	operator json_number() const;
+	operator json_string() const;
+	operator json_array() const;
+	operator json_object() const;
+private:
+	void destroy_subobject();
+	enum {NONE, BOOLEAN, NUMBER, STRING, ARRAY, OBJECT} _type;
+	union {
+		json_null _null;
+		json_boolean _boolean;
+		json_number _number;
+		json_string _string;
+		json_array _array;
+		json_object _object;
+	};
+
+	template <class Allocator> friend class json_var_imp;
+};
+
+template <class Allocator = std::allocator<void>>
+class json_var_imp : public json_var {
+public:
+	json_var_imp(const json_value &x, const Allocator &allocator = Allocator()) : json_var(x), _allocator(allocator) { }
+	json_var_imp(const json_var &x, const Allocator &allocator = Allocator()) : json_var(x), _allocator(allocator) { }
+	json_var_imp(const json_var_imp &x, const Allocator &allocator = Allocator()) : json_var(x), _allocator(allocator) { }
+	json_var_imp(json_array_imp<typename Allocator::template rebind<json_var>::other> &&x, const Allocator &allocator = Allocator()) : json_var(std::move(x)), _allocator(allocator) { }
+	json_var_imp(json_object_imp<typename Allocator::template rebind<std::pair<json_string, json_var>>::other> &&x, const Allocator &allocator = Allocator()) : json_var(std::move(x)), _allocator(allocator) { }
+	virtual ~json_var_imp() {
+		destroy(*this);
+	}
+private:
+	void destroy(json_var &x) {
+		if(x._type == ARRAY) {
+			typedef typename Allocator::template rebind<json_var>::other A2;
+			json_array_imp<A2> arr(std::move(x._array), _allocator);
+			for(auto &val: arr)
+				destroy(val);
+		} else if(x._type == OBJECT) {
+			typedef typename Allocator::template rebind<std::pair<json_string, json_var>>::other A2;
+			json_object_imp<A2> obj(std::move(x._object), _allocator);
+			for(auto &val: obj)
+				destroy(val.second);
+		}
+	}
+	Allocator _allocator;
+};
+
+extern const json_var json_none;
+
+struct json_array::node {
+	json_var value;
+	node *next;
+
+	node(const json_value &value) : value(value), next(nullptr) { }
+	template <class Allocator>
+	node(json_array_imp<Allocator> &&value) : value(std::move(value)), next(nullptr) { }
+	template <class Allocator>
+	node(json_object_imp<Allocator> &&value) : value(std::move(value)), next(nullptr) { }
+};
+
+struct json_object::node {
+	std::pair<json_string, json_var> value;
+	node *next;
+	node *hash_next;
+
+	node(const json_string &key, const json_value &value) : value(key, value), next(nullptr), hash_next(nullptr) { }
+	template <class Allocator>
+	node(const json_string &key, json_array_imp<Allocator> &&value) : value(key, std::move(value)), next(nullptr), hash_next(nullptr) { }
+	template <class Allocator>
+	node(const json_string &key, json_object_imp<Allocator> &&value) : value(key, std::move(value)), next(nullptr), hash_next(nullptr) { }
 };
 
 struct json_allocator_heap {
@@ -25,6 +387,9 @@ struct json_allocator_heap {
 	size_t pos;
 
 	json_allocator_heap() { }
+	json_allocator_heap(json_allocator_heap &&x) {
+		this->operator=(std::move(x));
+	}
 	json_allocator_heap(size_t n);
 
 	json_allocator_heap &operator=(json_allocator_heap &&x) {
@@ -89,621 +454,210 @@ public:
 	friend class json_allocator;
 };
 
-class json_string {
+class json_document : public json_var {
 public:
-	json_string(const char *data, size_t len) : _data(data), _len(len) {}
-	const char *c_str() const { return _data; }
-	size_t size() const { return _len; }
-	bool operator<(const json_string &x) const;
-	bool operator==(const json_string &x) const;
-	bool operator==(const char *x) const;
-	bool operator!=(const char *x) const;
-private:
-	const char *_data;
-	size_t _len;
-};
-
-class json_object {};
-class json_array {};
-class json_end {};
-
-class json_value_base {
-protected:
-	enum {NONE, BOOLEAN, NUMBER, STRING, OBJECT, ARRAY, END} _type;
-public:
-	json_value_base(decltype(_type) type) : _type(type) { }
-	bool is_null() const { return _type == NONE; }
-	bool is_boolean() const { return _type == BOOLEAN; }
-	bool is_number() const { return _type == NUMBER; }
-	bool is_string() const { return _type == STRING; }
-	bool is_object() const { return _type == OBJECT; }
-	bool is_array() const { return _type == ARRAY; }
-	bool is_end() const { return _type == END; }
-};
-
-template <class Allocator>
-class json_value_imp : public json_value_base {
-public:
-	typedef typename Allocator::template rebind<std::pair<json_string, json_value_imp>>::other object_allocator;
-	typedef typename Allocator::template rebind<json_value_imp>::other array_allocator;
-	typedef std::map<json_string, json_value_imp, std::less<json_string>, object_allocator> object;
-	typedef std::list<json_value_imp, array_allocator> array;
-
-	class obj {
-	public:
-		auto begin() const -> decltype(object().cbegin()) {
-			return _parent._object.cbegin();
-		}
-		auto end() const -> decltype(object().cend()) {
-			return _parent._object.cend();
-		}
-		const json_value_imp &operator[](const char *k) const {
-			json_string key(k, strlen(k));
-			auto x = _parent._object.find(key);
-			if(x == _parent._object.end())
-				throw json_exception("Key not found");
-			return x->second;
-		}
-		friend class json_value_imp;
-	private:
-		obj(const json_value_imp *x) : _parent(*x) {}
-		const json_value_imp &_parent;
-	};
-
-	class arr {
-	public:
-		auto begin() const -> decltype(array().cbegin()) {
-			return _parent._array.cbegin();
-		}
-		auto end() const -> decltype(array().cend()) {
-			return _parent._array.cend();
-		}
-		size_t size() const { return _parent._array.size(); }
-		friend class json_value_imp;
-	private:
-		arr(const json_value_imp *x) : _parent(*x) {}
-		const json_value_imp &_parent;
-	};
-
-	json_value_imp() : json_value_base(NONE) {}
-	json_value_imp(const json_value_imp &x) : json_value_base(NONE) {
-		*this = x;
-	}
-	json_value_imp(bool value) : json_value_base(BOOLEAN), _boolean(value) {}
-	json_value_imp(double value) : json_value_base(NUMBER), _number(value) {}
-	json_value_imp(const char *start, const char *end) : json_value_base(STRING), _string(start, end-start) {}
-	json_value_imp(const json_object &, const Allocator &allocator = Allocator()) : json_value_base(OBJECT), _object(allocator) {}
-	json_value_imp(const json_array &, const Allocator &allocator = Allocator()) : json_value_base(ARRAY), _array(allocator) {}
-	json_value_imp(const json_end &) : json_value_base(END) {}
-	~json_value_imp() {
-		if(is_object())
-			_object.~map();
-		else if(is_array())
-			_array.~list();
-	}
-	json_value_imp &operator=(const json_value_imp &x) {
-		_type = x._type;
-		switch(_type) {
-		case NONE:
-			break;
-		case BOOLEAN:
-			_boolean = x._boolean;
-			break;
-		case NUMBER:
-			_number = x._number;
-			break;
-		case STRING:
-			new(&_string) json_string(x._string);
-			break;
-		case OBJECT:
-			new(&_object) object(x._object);
-			break;
-		case ARRAY:
-			new(&_array) array(x._array);
-			break;
-		case END:
-			break;
-		}
-		return *this;
-	}
-	json_value_imp &operator=(json_value_imp &&x) {
-		_type = x._type;
-		switch(_type) {
-		case NONE:
-			break;
-		case BOOLEAN:
-			_boolean = x._boolean;
-			break;
-		case NUMBER:
-			_number = x._number;
-			break;
-		case STRING:
-			new(&_string) json_string(x._string);
-			break;
-		case OBJECT:
-			new(&_object) object(std::move(x._object));
-			break;
-		case ARRAY:
-			new(&_array) array(std::move(x._array));
-			break;
-		case END:
-			break;
-		}
-		return *this;
-	}
-	bool as_boolean() const {
-		if(!is_boolean())
-			throw json_exception("Invalid conversion to boolean");
-		return _boolean;
-	}
-	double as_number() const {
-		if(!is_number())
-			throw json_exception("Invalid conversion to double");
-		return _number;
-	}
-	json_string as_string() const {
-		if(!is_string())
-			throw json_exception("Invalid conversion to string");
-		return _string;
-	}
-	obj as_object() const {
-		if(!is_object())
-			throw json_exception("Invalid conversion to object");
-		return obj(this);
-	}
-	arr as_array() const {
-		if(!is_array())
-			throw json_exception("Invalid conversion to array");
-		return arr(this);
-	}
-	json_value_imp &insert(const json_string &key, const json_value_imp &value) {
-		if(!is_object())
-			throw json_exception("Invalid conversion to object");
-		auto &rv = _object[key];
-		rv = value;
-		return rv;
-	}
-	json_value_imp &insert(const json_value_imp &value) {
-		if(!is_array())
-			throw json_exception("Invalid conversion to array");
-		_array.push_back(value);
-		return _array.back();
-	}
-	bool has_key(const char *k) const {
-		if(!is_object())
-			throw json_exception("Invalid conversion to object");
-		json_string key(k, strlen(k));
-		auto x = _object.find(key);
-		if(x == _object.end())
-			return false;
-		return true;
-	}
-	const json_value_imp &operator[](const char *k) const {
-		if(!is_object())
-			throw json_exception("Invalid conversion to object");
-		json_string key(k, strlen(k));
-		auto x = _object.find(key);
-		if(x == _object.end())
-			throw json_exception("Key not found");
-		return x->second;
-	}
-protected:
-	union {
-		bool _boolean;
-		double _number;
-		json_string _string;
-		object _object;
-		array _array;
-	};
-};
-
-extern template class json_value_imp<std::allocator<void>>;
-extern template class json_value_imp<json_allocator<char>>;
-
-typedef json_value_imp<std::allocator<void>> json_value;
-
-class json_document : public json_value_imp<json_allocator<char>> {
-public:
-	typedef json_value_imp<json_allocator<char>> value_type;
-	json_document() { }
+	//json_document() { }
 	json_document(size_t n) : _heap(n), _allocator(&_heap) { }
 	json_document(const json_document &) = delete;
-	json_document(json_document &&x) {
-		_heap = std::move(x._heap);
-		_allocator = x._allocator;
-		value_type::operator=(std::move(x));
+	json_document(json_document &&x) : _heap(std::move(x._heap)), _allocator(&_heap) {
+		json_var::operator=(std::move(x));
 	}
-	~json_document();
-	value_type convert(const json_value &x);
-	json_document &operator=(json_document &&x) {
-		_heap = std::move(x._heap);
-		_allocator = x._allocator;
-		value_type::operator=(std::move(x));
+	json_document &operator=(json_var &&x) {
+		json_var::operator=(std::move(x));
 		return *this;
 	}
-	json_document &operator=(const value_type &x) {
-		value_type::operator=(x);
-		return *this;
-	}
-	void shrink_to_fit();
 private:
 	json_allocator_heap _heap;
 	json_allocator<char> _allocator;
+
+	friend class json_parse_callbacks;
 };
 
-template <class ForwardIterator>
-ForwardIterator json_skip_whitespace(ForwardIterator begin, ForwardIterator end) {
-	while(begin != end) {
-		switch(*begin) {
-		case ' ':
-		case '\t':
-		case '\r':
-		case '\n':
-			break;
-		default:
-			return begin;
-		}
-		++begin;
-	}
-	return begin;
-}
+class json_exception : public std::exception {
+public:
+	json_exception(const char *msg) : _what(msg) {}
+	const char *what() const noexcept { return _what; }
+private:
+	const char * const _what;
+};
 
-template <class ForwardIterator>
-void json_nonempty(ForwardIterator begin, ForwardIterator end) {
-	if(begin == end)
-		throw json_exception("Unexpected end of input");
-}
+class json_callbacks {
+public:
+	virtual void null() = 0;
+	virtual void boolean(const json_boolean &value) = 0;
+	virtual void number(const json_number &value) = 0;
+	virtual void string(const json_string &value) = 0;
+	virtual void array_begin() = 0;
+	virtual void array_end() = 0;
+	virtual void object_begin() = 0;
+	virtual void object_end() = 0;
+};
 
-template <class ForwardIterator>
-ForwardIterator json_parse_char(ForwardIterator begin, ForwardIterator end, char c) {
-	if(begin != end && *begin == c)
-		return ++begin;
-	throw json_exception("");
-}
+char *json_parse(char *begin, char *end, json_callbacks &cb);
+json_document json_parse(char *begin, char *end);
 
-template <class ForwardIterator, class Callback>
-ForwardIterator json_parse_boolean(ForwardIterator begin, ForwardIterator end, Callback &&cb) {
-	try {
-		switch(*begin) {
-		case 't':
-			++begin;
-			begin = json_parse_char(begin, end, 'r');
-			begin = json_parse_char(begin, end, 'u');
-			begin = json_parse_char(begin, end, 'e');
-			begin = json_skip_whitespace(begin, end);
-			cb(json_value(true));
-			break;
-		case 'f':
-			++begin;
-			begin = json_parse_char(begin, end, 'a');
-			begin = json_parse_char(begin, end, 'l');
-			begin = json_parse_char(begin, end, 's');
-			begin = json_parse_char(begin, end, 'e');
-			cb(json_value(true));
-			break;
-		}
-		return begin;
-	} catch (json_exception &e) {
-		throw json_exception("Unexpected bare word");
+template <class allocator>
+json_array_imp<allocator>::~json_array_imp() {
+	while(_head) {
+		node *next = _head->next;
+		_allocator.destroy(_head);
+		_allocator.deallocate(_head, 1);
+		_head = next;
 	}
 }
-
-
-template <class ForwardIterator, class Callback>
-ForwardIterator json_parse_number(ForwardIterator begin, ForwardIterator end, Callback &&cb) {
-	long number = 0;
-	long frac = 0;
-	long exp = 0;
-	int sign = 1;
-	int fracdigits = 0;
-	int expsign = 1;
-	json_nonempty(begin, end);
-	if(*begin == '-') {
-		sign = -1;
-		json_nonempty(++begin, end);
-	}
-	if(*begin != '0') {
-		while(begin != end && *begin >= '0' && *begin <= '9') {
-			number = number*10 + (*begin - '0');
-			++begin;
-		}
-	} else
-		++begin;
-	if(begin != end && *begin == '.') {
-		++begin;
-		while(begin != end && *begin >= '0' && *begin <= '9') {
-			frac = frac * 10 + (*begin - '0');
-			++fracdigits;
-			++begin;
-		}
-	}
-	if(begin != end && (*begin == 'e' || *begin == 'E')) {
-		++begin;
-		if(begin != end && *begin == '+')
-			++begin;
-		else if(begin != end && *begin == '-') {
-			++begin;
-			expsign = -1;
-		}
-		json_nonempty(begin, end);
-		while(begin != end && *begin >= '0' && *begin <= '9') {
-			exp = exp*10 + (*begin - '0');
-			++begin;
-		}
-	}
-	cb(json_value(sign*(number+frac*pow(0.1, fracdigits))*pow(10, expsign*exp)));
-	return begin;
-}
-
-template <class ForwardIterator>
-ForwardIterator json_str_write(ForwardIterator pos, char c) {
-	*pos = c;
-	return ++pos;
-}
-
-template <class ForwardIterator>
-ForwardIterator json_str_write_codepoint(ForwardIterator pos, unsigned int codepoint) {
-	if(codepoint < 0b10000000) {
-		pos = json_str_write(pos, codepoint);
-	} else {
-		int len = codepoint < 0x800 ? 2 :
-			      codepoint < 0x10000 ? 3 :
-			      codepoint < 0x200000 ? 4 :
-			      codepoint < 0x4000000 ? 5 :
-			      6;
-		codepoint = codepoint << (32 - 5 * len - 1);
-		pos = json_str_write(pos,  (0xffu << (8 - len)) | ((codepoint & (0xffu << (32 - (7 - len)))) >> (24 + len + 1)));
-		codepoint <<= 7 - len;
-		switch(len) {
-		case 6:
-			pos = json_str_write(pos,  0b10000000 | ((codepoint & 0xfc000000) >> 26));
-			codepoint <<= 6;
-		case 5:
-			pos = json_str_write(pos,  0b10000000 | ((codepoint & 0xfc000000) >> 26));
-			codepoint <<= 6;
-		case 4:
-			pos = json_str_write(pos,  0b10000000 | ((codepoint & 0xfc000000) >> 26));
-			codepoint <<= 6;
-		case 3:
-			pos = json_str_write(pos,  0b10000000 | ((codepoint & 0xfc000000) >> 26));
-			codepoint <<= 6;
-		case 2:
-			pos = json_str_write(pos,  0b10000000 | ((codepoint & 0xfc000000) >> 26));
-		}
-	}
-	return pos;
-}
-
-template <class ForwardIterator>
-int json_parse_hex(ForwardIterator begin, ForwardIterator end) {
-	json_nonempty(begin, end);
-	if(*begin >= '0' && *begin <= '9')
-		return *begin - '0';
-	else if(*begin >= 'a' && *begin <= 'f')
-		return 10 + *begin - 'a';
-	else if(*begin >= 'A' && *begin <= 'F')
-		return 10 + *begin - 'A';
-	else
-		throw json_exception("Unexpected character in unicode escape sequence");
-}
-
-template <class ForwardIterator, class Callback>
-ForwardIterator json_parse_string_slow(ForwardIterator str, ForwardIterator begin, ForwardIterator end, Callback &&cb) {
-	ForwardIterator wpos = begin;
-	while(begin != end && *begin != '"') {
-		if(*begin == '\\') {
-			unsigned int codepoint = 0;
-			json_nonempty(++begin, end);
-			switch(*begin) {
-			case '"':
-			case '\\':
-			case '/':
-				wpos = json_str_write(wpos, *begin);
-				break;
-			case 'b':
-				wpos = json_str_write(wpos, '\b');
-				break;
-			case 'f':
-				wpos = json_str_write(wpos, '\f');
-				break;
-			case 'n':
-				wpos = json_str_write(wpos, '\n');
-				break;
-			case 'r':
-				wpos = json_str_write(wpos, '\r');
-				break;
-			case 't':
-				wpos = json_str_write(wpos, '\t');
-				break;
-			case 'u':
-				codepoint = json_parse_hex(++begin, end);
-				codepoint = codepoint * 16 + json_parse_hex(++begin, end);
-				codepoint = codepoint * 16 + json_parse_hex(++begin, end);
-				codepoint = codepoint * 16 + json_parse_hex(++begin, end);
-				wpos = json_str_write_codepoint(wpos, codepoint);
-				break;
-			default:
-				throw json_exception("Unrecognized string escape sequence");
-			}
-		} else
-			wpos = json_str_write(wpos, *begin);
-		++begin;
-	}
-	json_nonempty(begin, end);
-	cb(json_value(str, wpos));
-	return ++begin;
-}
-
-template <class ForwardIterator, class Callback>
-ForwardIterator json_parse_string(ForwardIterator begin, ForwardIterator end, Callback &&cb) {
-	ForwardIterator str = begin;
-	while(begin != end && *begin != '"') {
-		if(*begin == '\\')
-			return json_parse_string_slow(str, begin, end, cb);
-		++begin;
-	}
-	json_nonempty(begin, end);
-	cb(json_value(str, begin));
-	return ++begin;
-}
-
-template <class ForwardIterator, class Callback>
-ForwardIterator json_parse(ForwardIterator begin, ForwardIterator end, Callback &&cb);
-
-template <class ForwardIterator, class Callback>
-ForwardIterator json_parse_object(ForwardIterator begin, ForwardIterator end, Callback &&cb) {
-	cb(json_value(json_object()));
-	begin = json_skip_whitespace(begin, end);
-	json_nonempty(begin, end);
-	while(*begin != '}') {
-		if(*begin != '"')
-			throw json_exception("Invalid object key");
-		begin = json_parse_string(++begin, end, cb);
-		begin = json_skip_whitespace(begin, end);
-		json_nonempty(begin, end);
-		begin = json_parse_char(begin, end, ':');
-		begin = json_skip_whitespace(begin, end);
-		begin = json_parse(begin, end, cb);
-		begin = json_skip_whitespace(begin, end);
-		json_nonempty(begin, end);
-		if(*begin == ',') {
-			begin = json_skip_whitespace(++begin, end);
-			json_nonempty(begin, end);
-		} else if(*begin != '}')
-			throw json_exception("Object key/value pairs must be separated by commas");
-	}
-	cb(json_value(json_end()));
-	return ++begin;
-}
-
-template <class ForwardIterator, class Callback>
-ForwardIterator json_parse_array(ForwardIterator begin, ForwardIterator end, Callback &&cb) {
-	cb(json_value(json_array()));
-	begin = json_skip_whitespace(begin, end);
-	json_nonempty(begin, end);
-	while(*begin != ']') {
-		begin = json_parse(begin, end, cb);
-		begin = json_skip_whitespace(begin, end);
-		json_nonempty(begin, end);
-		if(*begin == ',') {
-			begin = json_skip_whitespace(++begin, end);
-			json_nonempty(begin, end);
-		} else if(*begin != ']')
-			throw json_exception("Array members must be separated by commas");
-	}
-	cb(json_value(json_end()));
-	return ++begin;
-}
-
-template <class ForwardIterator, class Callback>
-ForwardIterator json_parse(ForwardIterator begin, ForwardIterator end, Callback &&cb) {
-	begin = json_skip_whitespace(begin, end);
-	json_nonempty(begin, end);
-	switch(*begin) {
-	case 'n':
-		++begin;
-		begin = json_parse_char(begin, end, 'u');
-		begin = json_parse_char(begin, end, 'l');
-		begin = json_parse_char(begin, end, 'l');
-		cb(json_value());
-		break;
-	case 't':
-	case 'f':
-		begin = json_parse_boolean(begin, end, cb);
-		break;
-	case '-':
-	case '0':
-	case '1':
-	case '2':
-	case '3':
-	case '4':
-	case '5':
-	case '6':
-	case '7':
-	case '8':
-	case '9':
-		begin = json_parse_number(begin, end, cb);
-		break;
-	case '"':
-		begin = json_parse_string(++begin, end, cb);
-		break;
-	case '{':
-		begin = json_parse_object(++begin, end, cb);
-		break;
-	case '[':
-		begin = json_parse_array(++begin, end, cb);
-		break;
-	}
-	return begin;
-}
-
-template <class ForwardIterator>
-json_document json_parse(ForwardIterator begin, ForwardIterator end) {
-	json_document rv((end-begin)*sizeof(void *));
-	json_value key;
-	std::vector<json_document::value_type *> stack;
-	bool root_set = false, key_set = false;
-	json_parse(begin, end, [&](const json_value &x) {
-		if(!root_set) {
-			rv = rv.convert(x);
-			root_set = true;
-			if(x.is_object() || x.is_array()) {
-				stack.push_back(&rv);
-			}
-			return;
-		}
-		if(x.is_end()) {
-			stack.pop_back();
-			return;
-		}
-		auto cur = stack.back();
-		if(cur->is_object()) {
-			if(!key_set) {
-				key = x;
-				key_set = true;
-			} else {
-				key_set = false;
-				auto &val = cur->insert(key.as_string(), rv.convert(x));
-				if(val.is_array() || val.is_object()) {
-					stack.push_back(&val);
-				}
-			}
-		} else {
-			auto &val = cur->insert(rv.convert(x));
-			if(val.is_array() || val.is_object()) {
-				stack.push_back(&val);
-			}
-		}
-	});
-	rv.shrink_to_fit();
-	return rv;
-}
-
-extern template char *json_skip_whitespace(char *, char *);
-extern template char *json_str_write_codepoint(char *, unsigned int);
-extern template int json_parse_hex(char *, char *);
-extern template json_document json_parse(char *, char *);
-
-std::ostream &operator<<(std::ostream &out, const json_string &x);
 
 template <class Allocator>
-std::ostream &operator<<(std::ostream &out, const json_value_imp<Allocator> &x) {
-	if(x.is_null())
-		out << "null";
-	else if(x.is_boolean())
-		out << x.as_boolean();
-	else if(x.is_number())
-		out << x.as_number();
-	else if(x.is_string())
-		out << x.as_string();
-	else if(x.is_object())
-		out << "[object]";
-	else if(x.is_array())
-		out << "[array]";
-	return out;
+void json_array_imp<Allocator>::push_back(const json_value &value) {
+	typename allocator::pointer x = _allocator.allocate(1);
+	_allocator.construct(x, value);
+	*_tail = x;
+	_tail = &x->next;
+	++_size;
 }
 
-extern template std::ostream &operator<<(std::ostream &, const json_value_imp<json_allocator<char>> &);
-extern template std::ostream &operator<<(std::ostream &, const json_value_imp<std::allocator<void>> &);
+template <class Allocator>
+void json_array_imp<Allocator>::push_back(const json_var &value) {
+	push_back(value.value());
+}
+
+template<class Allocator>
+template <class A2>
+void json_array_imp<Allocator>::push_back(json_array_imp<A2> &&value) {
+	typename allocator::pointer x = _allocator.allocate(1);
+	_allocator.construct(x, std::move(value));
+	*_tail = x;
+	_tail = &x->next;
+	++_size;
+}
+
+template<class Allocator>
+template <class A2>
+void json_array_imp<Allocator>::push_back(json_object_imp<A2> &&value) {
+	typename allocator::pointer x = _allocator.allocate(1);
+	_allocator.construct(x, std::move(value));
+	*_tail = x;
+	_tail = &x->next;
+	++_size;
+}
+
+template <class Allocator>
+json_object_imp<Allocator>::~json_object_imp() {
+	while(_head) {
+		node *next = _head->next;
+		_allocator.destroy(_head);
+		_allocator.deallocate(_head, 1);
+		_head = next;
+	}
+	if(_index) {
+		typename Allocator::template rebind<node *>::other a2(_allocator);
+		size_t buckets = (size_t)_index[0];
+		a2.deallocate(_index, buckets+1);
+	}
+}
+
+template <class Allocator>
+void json_object_imp<Allocator>::push_back(const json_string &key, const json_value &value) {
+	typename allocator::pointer x = _allocator.allocate(1);
+	_allocator.construct(x, key, value);
+	*_tail = x;
+	_tail = &x->next;
+	++_size;
+}
+
+template <class Allocator>
+void json_object_imp<Allocator>::push_back(const json_string &key, const json_var &value) {
+	push_back(key, value.value());
+}
+
+template <class Allocator>
+template <class A2>
+void json_object_imp<Allocator>::push_back(const json_string &key, json_array_imp<A2> &&value) {
+	typename allocator::pointer x = _allocator.allocate(1);
+	_allocator.construct(x, key, std::move(value));
+	*_tail = x;
+	_tail = &x->next;
+	++_size;
+}
+
+template <class Allocator>
+template <class A2>
+void json_object_imp<Allocator>::push_back(const json_string &key, json_object_imp<A2> &&value) {
+	typename allocator::pointer x = _allocator.allocate(1);
+	_allocator.construct(x, key, std::move(value));
+	*_tail = x;
+	_tail = &x->next;
+	++_size;
+}
+
+template <class Allocator>
+void json_object_imp<Allocator>::index() {
+	typename Allocator::template rebind<node *>::other a2(_allocator);
+	if(_index) {
+		size_t buckets = (size_t)_index[0];
+		a2.deallocate(_index, buckets+1);
+	}
+	size_t buckets = _size / 2;
+	buckets = buckets == 0 ? 1 : buckets;
+	_index = a2.allocate(buckets+1);
+	json_object::index(buckets);
+}
+
+inline json_array::const_iterator &json_array::const_iterator::operator++() {
+	_pos = _pos->next;
+	return *this;
+}
+
+inline const json_var &json_array::const_iterator::operator*() const {
+	return _pos->value;
+}
+
+inline const json_var *json_array::const_iterator::operator->() const {
+	return &_pos->value;
+}
+
+inline bool json_array::const_iterator::operator!=(const const_iterator &x) const {
+	return _pos != x._pos;
+}
+
+inline bool json_array::const_iterator::operator==(const const_iterator &x) const {
+	return _pos == x._pos;
+}
+
+inline json_var &json_array::iterator::operator*() {
+	return const_cast<node *>(_pos)->value;
+}
+
+inline json_var *json_array::iterator::operator->() {
+	return &const_cast<node *>(_pos)->value;
+}
+
+inline json_object::const_iterator &json_object::const_iterator::operator++() {
+	_pos = _pos->next;
+	return *this;
+}
+
+inline const std::pair<json_string, json_var> &json_object::const_iterator::operator*() const {
+	return _pos->value;
+}
+
+inline const std::pair<json_string, json_var> *json_object::const_iterator::operator->() const {
+	return &_pos->value;
+}
+
+inline bool json_object::const_iterator::operator!=(const const_iterator &x) const {
+	return _pos != x._pos;
+}
+
+inline bool json_object::const_iterator::operator==(const const_iterator &x) const {
+	return _pos == x._pos;
+}
+
+inline std::pair<json_string, json_var> &json_object::iterator::operator*() {
+	return const_cast<node *>(_pos)->value;
+}
+
+inline std::pair<json_string, json_var> *json_object::iterator::operator->() {
+	return &const_cast<node *>(_pos)->value;
+}
 
 #endif

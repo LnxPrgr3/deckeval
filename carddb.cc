@@ -246,13 +246,13 @@ void card_database::cost::parse(const char *str, const char *end) {
 
 void card_database::deck::init() {
 	json_document doc = json_parse(&*_str.begin(), &*_str.end());
-	auto val = doc.as_object();
-	_name = val["name"].as_string();
-	for(auto &card: val["deck"].as_array()) {
-		_deck.emplace_back(_parent.find_card(card["name"].as_string()), (int)card["count"].as_number());
+	json_object val = doc;
+	_name = val["name"];
+	for(const json_object &card: json_array(val["deck"])) {
+		_deck.emplace_back(_parent.find_card(card["name"]), (int)json_number(card["count"]));
 	}
-	for(auto &card: val["sideboard"].as_array()) {
-		_sideboard.emplace_back(_parent.find_card(card["name"].as_string()), (int)card["count"].as_number());
+	for(const json_object &card: json_array(val["sideboard"])) {
+		_sideboard.emplace_back(_parent.find_card(card["name"]), (int)json_number(card["count"]));
 	}
 }
 

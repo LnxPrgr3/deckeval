@@ -4,6 +4,7 @@
 #include "json.h"
 #include <iostream>
 #include <stdexcept>
+#include <vector>
 #include <unordered_map>
 
 namespace std {
@@ -26,8 +27,6 @@ struct hash<json_string> {
 
 class card_database {
 public:
-	typedef json_value_imp<json_allocator<char>> json_value;
-
 	template <class Value>
 	class object_collection {
 	public:
@@ -38,7 +37,7 @@ public:
 			bool operator!=(const iterator &x) { return _iterator != x._iterator; }
 			friend class object_collection;
 		private:
-			typedef decltype(json_value().as_object().begin()) native_iterator;
+			typedef json_object::const_iterator native_iterator;
 			iterator(const native_iterator &x) : _iterator(x) { }
 			native_iterator _iterator;
 		};
@@ -52,9 +51,9 @@ public:
 
 		friend class card_database;
 	private:
-		object_collection(const json_value &x) : _collection(x.as_object()) { }
+		object_collection(const json_object &x) : _collection(x) { }
 
-		const decltype(json_value().as_object()) _collection;
+		json_object _collection;
 	};
 
 	template <class Value>
@@ -67,7 +66,7 @@ public:
 			bool operator!=(const iterator &x) { return _iterator != x._iterator; }
 			friend class array_collection;
 		private:
-			typedef decltype(json_value().as_array().begin()) native_iterator;
+			typedef json_array::const_iterator native_iterator;
 			iterator(const native_iterator &x) : _iterator(x) { }
 			native_iterator _iterator;
 		};
@@ -78,9 +77,9 @@ public:
 
 		friend class card_database;
 	private:
-		array_collection(const json_value &x) : _collection(x.as_array()) { }
+		array_collection(const json_array &x) : _collection(x) { }
 
-		decltype(json_value().as_array()) _collection;
+		json_array _collection;
 	};
 
 	class cost {
@@ -184,58 +183,56 @@ public:
 
 	class card {
 	public:
-		json_string id() const { return _card["id"].as_string(); }
-		json_string layout() const { return _card["layout"].as_string(); }
-		json_string name() const { return _card["name"].as_string(); }
-		decltype(json_value().as_array()) names() const { return _card["names"].as_array(); }
+		json_string id() const { return _card["id"]; }
+		json_string layout() const { return _card["layout"]; }
+		json_string name() const { return _card["name"]; }
+		json_array names() const { return _card["names"]; }
 		cost mana_cost() const {
-			return cost(_card.has_key("manaCost") ? _card["manaCost"].as_string() : json_string("", 0));
+			return cost(_card.has_key("manaCost") ? json_string(_card["manaCost"]) : json_string("", 0));
 		}
-		int cmc() const { return _card.has_key("cmc") ? (int)_card["cmc"].as_number() : 0; }
-		decltype(json_value().as_array()) colors() const { return _card["colors"].as_array(); }
-		decltype(json_value().as_array()) color_identity() const { return _card["colorIdentity"].as_array(); }
-		json_string type() const { return _card["type"].as_string(); }
-		decltype(json_value().as_array()) supertypes() const { return _card["supertypes"].as_array(); }
-		decltype(json_value().as_array()) types() const { return _card["types"].as_array(); }
-		decltype(json_value().as_array()) subtypes() const { return _card["subtypes"].as_array(); }
-		json_string rarity() const { return _card["rarity"].as_string(); }
-		json_string text() const { return _card.has_key("text") ? _card["text"].as_string() : json_string("", 0); }
-		json_string flavor() const { return _card["flavor"].as_string(); }
-		json_string artist() const { return _card["artist"].as_string(); }
-		json_string number() const { return _card["number"].as_string(); }
-		json_string power() const { return _card.has_key("power") ? _card["power"].as_string() : json_string("", 0); }
-		json_string toughness() const { return _card.has_key("toughness") ? _card["toughness"].as_string() : json_string("", 0); }
-		int loyalty() const { return _card.has_key("loyalty") ? (int)_card["loyalty"].as_number() : 0; }
-		int multiverse_id() const { return _card.has_key("multiverseid") ? (int)_card["multiverseid"].as_number() : 0; }
+		int cmc() const { return _card.has_key("cmc") ? (int)json_number(_card["cmc"]) : 0; }
+		json_array colors() const { return _card["colors"]; }
+		json_array color_identity() const { return _card["colorIdentity"]; }
+		json_string type() const { return _card["type"]; }
+		json_array supertypes() const { return _card["supertypes"]; }
+		json_array types() const { return _card["types"]; }
+		json_array subtypes() const { return _card["subtypes"]; }
+		json_string rarity() const { return _card["rarity"]; }
+		json_string text() const { return _card.has_key("text") ? json_string(_card["text"]) : json_string("", 0); }
+		json_string flavor() const { return _card["flavor"]; }
+		json_string artist() const { return _card["artist"]; }
+		json_string number() const { return _card["number"]; }
+		json_string power() const { return _card.has_key("power") ? json_string(_card["power"]) : json_string("", 0); }
+		json_string toughness() const { return _card.has_key("toughness") ? json_string(_card["toughness"]) : json_string("", 0); }
+		int loyalty() const { return _card.has_key("loyalty") ? (int)json_number(_card["loyalty"]) : 0; }
+		int multiverse_id() const { return _card.has_key("multiverseid") ? (int)json_number(_card["multiverseid"]) : 0; }
 
 		friend class array_collection<card>;
 	private:
-		card(const json_value &x) : _card(x) { }
+		card(const json_object &x) : _card(x) { }
 
-		const json_value &_card;
+		const json_object _card;
 	};
 
 	class card_set {
 	public:
-		json_string name() const { return _set["name"].as_string(); }
-		json_string code() const { return _set["code"].as_string(); }
+		json_string name() const { return _set["name"]; }
+		json_string code() const { return _set["code"]; }
 		json_string gatherer_code() const {
-			return _set.has_key("gathererCode") ? _set["gathererCode"].as_string() : _set["code"].as_string();
+			return _set.has_key("gathererCode") ? _set["gathererCode"] : _set["code"];
 		}
-		json_string release_date() const { return _set["releaseDate"].as_string(); }
-		json_string border() const { return _set["border"].as_string(); }
-		json_string type() const { return _set.has_key("type") ?  _set["type"].as_string() : json_string("", 0); }
-		json_string block() const { return _set["block"].as_string(); }
-		bool online_only() const {
-			return _set.has_key("onlineOnly") ? _set["onlineOnly"].as_boolean() : false;
-		}
+		json_string release_date() const { return _set["releaseDate"]; }
+		json_string border() const { return _set["border"]; }
+		json_string type() const { return _set.has_key("type") ?  json_string(_set["type"]) : json_string("", 0); }
+		json_string block() const { return _set["block"]; }
+		bool online_only() const { return json_boolean(_set["onlineOnly"]); }
 		array_collection<card> cards() const { return array_collection<card>(_set["cards"]); }
 		friend class card_database;
 		friend class object_collection<card_set>;
 	private:
-		card_set(const json_value &x) : _set(x) { }
+		card_set(const json_object &x) : _set(x) { }
 
-		const json_value &_set;
+		const json_object _set;
 	};
 
 	class deck {
