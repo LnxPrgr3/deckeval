@@ -405,14 +405,13 @@ char *neon_memchr(char *data, char *end, char needle, char needle2) {
 		auto res_min = vmin_u8(res_high, res_low); // 8 possible indexes
 		auto res_shifted = vext_u8(res_min, res_min, 4);
 		auto res_intsize_min = vmin_u8(res_min, res_shifted);
-		auto res_int_min = vget_lane_u32((uint32x2_t)res_intsize_min, 0);
-		if(res_int_min != 0xffffffffU) {
-			unsigned char *idx = (unsigned char *)&res_int_min;
-			offset = 0xff;
-			for(int i = 0; i < 4; ++i) {
-				if(idx[i] < offset)
-					offset = idx[i];
-			}
+		auto res_intsize_shifted = vext_u8(res_intsize_min, res_intsize_min, 2);
+		auto res_shortsize_min = vmin_u8(res_intsize_min, res_intsize_shifted);
+		auto res_shortsize_shifted = vext_u8(res_shortsize_min, res_shortsize_min, 1);
+		auto res_charsize_min = vmin_u8(res_shortsize_min, res_shortsize_shifted);
+		auto res_char_min = vget_lane_u8(res_charsize_min, 0);
+		if(res_char_min != 0xff) {
+			offset = res_char_min;
 			done = true;
 		}
 	}, [&done]() { return done; });
