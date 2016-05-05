@@ -401,7 +401,7 @@ char *neon_memchr(char *data, char *end, char needle, char needle2) {
 		auto res_intsize_min = vmin_u8(res_min, res_shifted);
 		auto res_int_min = vget_lane_u32((uint32x2_t)res_intsize_min, 0);
 		if(res_int_min != 0xffffffffU) {
-			char *idx = (char *)&res_int_min;
+			unsigned char *idx = (unsigned char *)&res_int_min;
 			offset = 0xff;
 			for(int i = 0; i < 4; ++i) {
 				if(idx[i] < offset)
