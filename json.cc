@@ -373,7 +373,7 @@ char *neon_scan(char *data, char *end, CharOp &&cop, VecOp &&vop, Cond &&cond = 
 		vop(vld1q_u8((uint8_t *)data));
 		if(cond()) return data;
 		char *nd __attribute__((__aligned__(16))) = (char *)(((uintptr_t)data / 16 + 1) * 16);
-		while(nd < end-15) {
+		while(nd < end) {
 			vop(vld1q_u8((uint8_t *)nd));
 			if(cond()) return nd;
 			nd += 16;
