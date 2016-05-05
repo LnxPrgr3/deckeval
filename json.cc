@@ -3,7 +3,7 @@
 #include <functional>
 #include <vector>
 #include <cmath>
-#ifdef USE_NEON
+#ifdef __ARM_NEON__
 #include <arm_neon.h>
 #endif
 
@@ -366,7 +366,7 @@ struct false_cond {
 	bool operator()() const { return false; }
 };
 
-#ifdef USE_NEON
+#ifdef __ARM_NEON__
 template <class CharOp, class VecOp, class Cond = false_cond>
 char *neon_scan(char *data, char *end, CharOp &&cop, VecOp &&vop, Cond &&cond = Cond()) {
 	if(data < end-15) {
@@ -606,7 +606,7 @@ char *json_parse_string_slow(char *str, char *begin, char *end, json_callbacks &
 		} else
 			wpos = json_str_write(wpos, *begin);
 		++begin;
-#ifdef USE_NEON
+#ifdef __ARM_NEON__
 		char *next = neon_memchr(begin, end, '\\', '"');
 		size_t size = next-begin;
 		memmove(wpos, begin, size);
@@ -621,7 +621,7 @@ char *json_parse_string_slow(char *str, char *begin, char *end, json_callbacks &
 
 char *json_parse_string(char *begin, char *end, json_callbacks &cb) {
 	char *str = begin;
-#ifdef USE_NEON
+#ifdef __ARM_NEON__
 	begin = neon_memchr(begin, end, '\\', '"');
 	if(*begin == '\\')
 		return json_parse_string_slow(str, begin, end, cb);
