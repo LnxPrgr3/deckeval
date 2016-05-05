@@ -607,6 +607,13 @@ char *json_parse_string_slow(char *str, char *begin, char *end, json_callbacks &
 		} else
 			wpos = json_str_write(wpos, *begin);
 		++begin;
+#ifdef USE_NEON
+		char *next = neon_memchr(begin, end, '\\', '"');
+		size_t size = next-begin;
+		memmove(wpos, begin, size);
+		wpos += size;
+		begin = next;
+#endif
 	}
 	json_nonempty(begin, end);
 	cb.string(json_string(str, wpos-str));
