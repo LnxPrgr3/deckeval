@@ -3,6 +3,9 @@
 #include <functional>
 #include <vector>
 #include <cmath>
+#ifdef USE_NEON
+#include <arm_neon.h>
+#endif
 
 const json_var json_none = json_null();
 
@@ -359,6 +362,58 @@ void json_document::shrink_to_fit() {
 	_heap.data.truncate(size);
 }
 
+struct false_cond {
+	bool operator()() const { return false; }
+};
+
+#ifdef USE_NEON
+template <class CharOp, class VecOp, class Cond = false_cond>
+char *neon_scan(char *data, char *end, CharOp &&cop, VecOp &&vop, Cond &&cond = Cond()) {
+	while(data < end-15) {
+		vop(vld1q_u8((uint8_t *)data));
+		if(cond()) return data;
+		data += 16;
+	}
+	while(data < end) {
+		cop(*data); if(cond()) return data; ++data;
+	}
+	return data > end ? end : data;
+}
+
+char *neon_memchr(char *data, char *end, char needle, char needle2) {
+	auto needle_expanded = vdupq_n_u8(needle);
+	auto needle2_expanded = vdupq_n_u8(needle2);
+	uint8x16_t index = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+	bool done = false;
+	size_t offset = 0;
+	data = neon_scan(data, end, [&done,needle,needle2](char c) {
+		if(c == needle || c == needle2)
+			done = true;
+	}, [&done,&offset,needle_expanded,needle2_expanded,index](uint8x16_t haystack) {
+		auto eq = vceqq_u8(haystack, needle_expanded); // 0xff if found
+		eq = vorrq_u8(eq, vceqq_u8(haystack, needle2_expanded));
+		eq = vmvnq_u8(eq); // 0 if found
+		auto res = vorrq_u8(eq, index); // Index or 0xff
+		auto res_high = vget_high_u8(res);
+		auto res_low = vget_low_u8(res);
+		auto res_min = vmin_u8(res_high, res_low); // 8 possible indexes
+		auto res_shifted = vext_u8(res_min, res_min, 4);
+		auto res_intsize_min = vmin_u8(res_min, res_shifted);
+		auto res_int_min = vget_lane_u32((uint32x2_t)res_intsize_min, 0);
+		if(res_int_min != 0xffffffffU) {
+			char *idx = (char *)&res_int_min;
+			offset = 0xff;
+			for(int i = 0; i < 4; ++i) {
+				if(idx[i] < offset)
+					offset = idx[i];
+			}
+			done = true;
+		}
+	}, [&done]() { return done; });
+	return data + offset;
+}
+#endif
+
 char *json_skip_whitespace(char *begin, char *end) {
 	while(begin != end) {
 		switch(*begin) {
@@ -554,6 +609,14 @@ char *json_parse_string_slow(char *str, char *begin, char *end, json_callbacks &
 
 char *json_parse_string(char *begin, char *end, json_callbacks &cb) {
 	char *str = begin;
+#ifdef USE_NEON
+	begin = neon_memchr(begin, end, '\\', '"');
+	if(*begin == '\\')
+		return json_parse_string_slow(str, begin, end, cb);
+	json_nonempty(begin, end);
+	cb.string(json_string(str, begin-str));
+	return ++begin;
+#else
 	while(begin != end && *begin != '"') {
 		if(*begin == '\\')
 			return json_parse_string_slow(str, begin, end, cb);
@@ -562,6 +625,7 @@ char *json_parse_string(char *begin, char *end, json_callbacks &cb) {
 	json_nonempty(begin, end);
 	cb.string(json_string(str, begin-str));
 	return ++begin;
+#endif
 }
 
 char *json_parse_array(char *begin, char *end, json_callbacks &cb) {
