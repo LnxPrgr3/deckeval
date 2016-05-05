@@ -183,6 +183,10 @@ public:
 	json_array_imp(json_array_imp &&x) : _allocator(x._allocator), _tail(x._tail == &x._head ? &_head : x._tail), json_array(std::move(x)) { }
 	json_array_imp(json_array &&x, const Allocator allocator = Allocator()) : json_array(std::move(x)), _allocator(allocator), _tail(nullptr) { }
 	~json_array_imp();
+	void push_back(const json_null &value);
+	void push_back(const json_boolean &value);
+	void push_back(const json_number &value);
+	void push_back(const json_string &value);
 	void push_back(const json_value &value);
 	void push_back(const json_var &value);
 	template <class A2>
@@ -262,6 +266,10 @@ public:
 	json_object_imp(json_object_imp &&x) : _allocator(x._allocator), _tail(x._tail == &x._head ? &_head : x._tail), _size(x._size), json_object(std::move(x)) { }
 	json_object_imp(json_object &&x, const Allocator &allocator = Allocator()) : json_object(std::move(x)), _allocator(allocator), _tail(nullptr), _size(0) { }
 	~json_object_imp();
+	void push_back(const json_string &key, const json_null &value);
+	void push_back(const json_string &key, const json_boolean &value);
+	void push_back(const json_string &key, const json_number &value);
+	void push_back(const json_string &key, const json_string &value);
 	void push_back(const json_string &key, const json_value &value);
 	void push_back(const json_string &key, const json_var &value);
 	template <class A2>
@@ -284,6 +292,10 @@ class json_var_imp;
 class json_var : public json_value {
 public:
 	json_var() : _type(NONE), _null() { }
+	json_var(const json_null &x) : _type(NONE), _null() { }
+	json_var(const json_boolean &x) : _type(BOOLEAN), _boolean(x) { }
+	json_var(const json_number &x) : _type(NUMBER), _number(x) { }
+	json_var(const json_string &x) : _type(STRING), _string(x) { }
 	json_var(const json_value &x);
 	json_var(const json_var &x);
 	template <class Allocator>
@@ -362,6 +374,10 @@ struct json_array::node {
 	json_var value;
 	node *next;
 
+	node(const json_null &value) : value(value), next(nullptr) { }
+	node(const json_boolean &value) : value(value), next(nullptr) { }
+	node(const json_number &value) : value(value), next(nullptr) { }
+	node(const json_string &value) : value(value), next(nullptr) { }
 	node(const json_value &value) : value(value), next(nullptr) { }
 	template <class Allocator>
 	node(json_array_imp<Allocator> &&value) : value(std::move(value)), next(nullptr) { }
@@ -374,6 +390,10 @@ struct json_object::node {
 	node *next;
 	node *hash_next;
 
+	node(const json_string &key, const json_null &value) : value(key, value), next(nullptr), hash_next(nullptr) { }
+	node(const json_string &key, const json_boolean &value) : value(key, value), next(nullptr), hash_next(nullptr) { }
+	node(const json_string &key, const json_number &value) : value(key, value), next(nullptr), hash_next(nullptr) { }
+	node(const json_string &key, const json_string &value) : value(key, value), next(nullptr), hash_next(nullptr) { }
 	node(const json_string &key, const json_value &value) : value(key, value), next(nullptr), hash_next(nullptr) { }
 	template <class Allocator>
 	node(const json_string &key, json_array_imp<Allocator> &&value) : value(key, std::move(value)), next(nullptr), hash_next(nullptr) { }
@@ -508,6 +528,42 @@ json_array_imp<allocator>::~json_array_imp() {
 }
 
 template <class Allocator>
+void json_array_imp<Allocator>::push_back(const json_null &value) {
+	typename allocator::pointer x = _allocator.allocate(1);
+	_allocator.construct(x, value);
+	*_tail = x;
+	_tail = &x->next;
+	++_size;
+}
+
+template <class Allocator>
+void json_array_imp<Allocator>::push_back(const json_boolean &value) {
+	typename allocator::pointer x = _allocator.allocate(1);
+	_allocator.construct(x, value);
+	*_tail = x;
+	_tail = &x->next;
+	++_size;
+}
+
+template <class Allocator>
+void json_array_imp<Allocator>::push_back(const json_number &value) {
+	typename allocator::pointer x = _allocator.allocate(1);
+	_allocator.construct(x, value);
+	*_tail = x;
+	_tail = &x->next;
+	++_size;
+}
+
+template <class Allocator>
+void json_array_imp<Allocator>::push_back(const json_string &value) {
+	typename allocator::pointer x = _allocator.allocate(1);
+	_allocator.construct(x, value);
+	*_tail = x;
+	_tail = &x->next;
+	++_size;
+}
+
+template <class Allocator>
 void json_array_imp<Allocator>::push_back(const json_value &value) {
 	typename allocator::pointer x = _allocator.allocate(1);
 	_allocator.construct(x, value);
@@ -554,6 +610,42 @@ json_object_imp<Allocator>::~json_object_imp() {
 		size_t buckets = (size_t)_index[0];
 		a2.deallocate(_index, buckets+1);
 	}
+}
+
+template <class Allocator>
+void json_object_imp<Allocator>::push_back(const json_string &key, const json_null &value) {
+	typename allocator::pointer x = _allocator.allocate(1);
+	_allocator.construct(x, key, value);
+	*_tail = x;
+	_tail = &x->next;
+	++_size;
+}
+
+template <class Allocator>
+void json_object_imp<Allocator>::push_back(const json_string &key, const json_boolean &value) {
+	typename allocator::pointer x = _allocator.allocate(1);
+	_allocator.construct(x, key, value);
+	*_tail = x;
+	_tail = &x->next;
+	++_size;
+}
+
+template <class Allocator>
+void json_object_imp<Allocator>::push_back(const json_string &key, const json_number &value) {
+	typename allocator::pointer x = _allocator.allocate(1);
+	_allocator.construct(x, key, value);
+	*_tail = x;
+	_tail = &x->next;
+	++_size;
+}
+
+template <class Allocator>
+void json_object_imp<Allocator>::push_back(const json_string &key, const json_string &value) {
+	typename allocator::pointer x = _allocator.allocate(1);
+	_allocator.construct(x, key, value);
+	*_tail = x;
+	_tail = &x->next;
+	++_size;
 }
 
 template <class Allocator>
