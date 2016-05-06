@@ -5,6 +5,8 @@
 #include <cmath>
 #ifdef __ARM_NEON__
 #include <arm_neon.h>
+#elif __SSE2__
+#include <emmintrin.h>
 #endif
 
 const json_var json_none = json_null();
@@ -417,6 +419,45 @@ char *neon_memchr(char *data, char *end, char needle, char needle2) {
 	}, [&done]() { return done; });
 	return data + offset;
 }
+#elif __SSE2__
+template <class CharOp, class VecOp, class Cond = false_cond>
+char *sse2_scan(char *data, char *end, CharOp &&cop, VecOp &&vop, Cond &&cond = Cond()) {
+	if(data < end-15) {
+		vop(_mm_loadu_si128((const __m128i *)data));
+		if(cond()) return data;
+		char *nd __attribute__((__aligned__(16))) = (char *)(((uintptr_t)data / 16 + 1) * 16);
+		while(nd < end) {
+			vop(_mm_load_si128((const __m128i *)nd));
+			if(cond()) return nd;
+			nd += 16;
+		}
+		data = nd;
+	}
+	while(data < end) {
+		cop(*data); if(cond()) return data; ++data;
+	}
+	return data > end ? end : data;
+}
+
+char *sse2_memchr(char *data, char *end, char needle, char needle2) {
+	auto needle_expanded = _mm_set1_epi8(needle);
+	auto needle2_expanded = _mm_set1_epi8(needle2);
+	bool done = false;
+	size_t offset = 0;
+	data = sse2_scan(data, end, [&done,needle,needle2](char c) {
+		if(c == needle || c == needle2)
+			done = true;
+	}, [&done,&offset,needle_expanded,needle2_expanded](__m128i haystack) {
+		auto eq = _mm_cmpeq_epi8(haystack, needle_expanded);
+		eq = _mm_or_si128(eq, _mm_cmpeq_epi8(haystack, needle2_expanded));
+		auto mask = _mm_movemask_epi8(eq);
+		if(mask) {
+			offset = __builtin_ffs(mask)-1;
+			done = true;
+		}
+	}, [&done]() { return done; });
+	return data + offset;
+}
 #endif
 
 char *json_skip_whitespace(char *begin, char *end) {
@@ -612,6 +653,12 @@ char *json_parse_string_slow(char *str, char *begin, char *end, json_callbacks &
 		memmove(wpos, begin, size);
 		wpos += size;
 		begin = next;
+#elif __SSE2__
+		char *next = sse2_memchr(begin, end, '\\', '"');
+		size_t size = next-begin;
+		memmove(wpos, begin, size);
+		wpos += size;
+		begin = next;
 #endif
 	}
 	json_nonempty(begin, end);
@@ -623,6 +670,13 @@ char *json_parse_string(char *begin, char *end, json_callbacks &cb) {
 	char *str = begin;
 #ifdef __ARM_NEON__
 	begin = neon_memchr(begin, end, '\\', '"');
+	if(*begin == '\\')
+		return json_parse_string_slow(str, begin, end, cb);
+	json_nonempty(begin, end);
+	cb.string(json_string(str, begin-str));
+	return ++begin;
+#elif __SSE2__
+	begin = sse2_memchr(begin, end, '\\', '"');
 	if(*begin == '\\')
 		return json_parse_string_slow(str, begin, end, cb);
 	json_nonempty(begin, end);
