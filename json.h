@@ -236,6 +236,7 @@ private:
 	
 	friend std::ostream &operator<<(std::ostream &, const json_string &);
 	template <class Allocator> friend class json_string_imp;
+	friend class std::hash<json_string>;
 };
 
 inline std::ostream &operator<<(std::ostream &out, const json_string &x) {

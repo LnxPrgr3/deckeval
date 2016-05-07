@@ -14,9 +14,24 @@ struct hash<json_string> {
 		static const size_t offset_basis = sizeof(size_t) == 4 ? 2166136261U : 14695981039346656037U;
 		static const size_t prime = sizeof(size_t) == 4 ? 16777619U : 1099511628211U;
 		size_t hash = offset_basis;
-		for(auto c: x) {
-			hash ^= c;
-			hash *= prime;
+		if(!x._multipart) {
+			const char *str = x._value;
+			const char *end = str+x._size;
+			while(str != end) {
+				hash ^= *str++;
+				hash *= prime;
+			}
+		} else {
+			json_string::extent *ext = x._next;
+			while(ext) {
+				const char *str = ext->value();
+				const char *end = str+ext->_size;
+				while(str != end) {
+					hash ^= *str++;
+					hash *= prime;
+				}
+				ext = ext->_next;
+			}
 		}
 		return hash;
 	}
