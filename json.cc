@@ -689,7 +689,7 @@ json_string_imp<typename Allocator::template rebind<json_string::extent>::other>
 }
 
 template <class Allocator>
-char *json_parse_string(Allocator &allocator, char *begin, char *end, json_callbacks &cb) {
+__attribute__((always_inline)) char *json_parse_string(Allocator &allocator, char *begin, char *end, json_callbacks &cb) {
 	char *str = begin;
 #ifdef __ARM_NEON__
 	begin = neon_memchr(begin, end, '\\', '"');
