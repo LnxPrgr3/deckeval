@@ -17,31 +17,31 @@ class json_var;
 class json_value {
 public:
 	virtual ~json_value();
-	virtual operator json_boolean() const = 0;
-	virtual operator json_number() const = 0;
-	virtual operator json_string() const = 0;
-	virtual operator json_array() const = 0;
-	virtual operator json_object() const = 0;
+	__attribute__((pure)) virtual operator json_boolean() const = 0;
+	__attribute__((pure)) virtual operator json_number() const = 0;
+	__attribute__((pure)) virtual operator json_string() const = 0;
+	__attribute__((pure)) virtual operator json_array() const = 0;
+	__attribute__((pure)) virtual operator json_object() const = 0;
 };
 
 class json_null : public json_value {
 public:
-	operator json_boolean() const;
-	operator json_number() const;
-	operator json_string() const;
-	operator json_array() const;
-	operator json_object() const;
+	__attribute__((pure)) operator json_boolean() const;
+	__attribute__((pure)) operator json_number() const;
+	__attribute__((pure)) operator json_string() const;
+	__attribute__((pure)) operator json_array() const;
+	__attribute__((pure)) operator json_object() const;
 };
 
 class json_boolean : public json_value {
 public:
 	json_boolean(bool value) : _value{value} { }
-	operator json_boolean() const;
-	operator json_number() const;
-	operator json_string() const;
-	operator json_array() const;
-	operator json_object() const;
-	operator bool() const { return _value; }
+	__attribute__((pure)) operator json_boolean() const;
+	__attribute__((pure)) operator json_number() const;
+	__attribute__((pure)) operator json_string() const;
+	__attribute__((pure)) operator json_array() const;
+	__attribute__((pure)) operator json_object() const;
+	__attribute__((pure)) operator bool() const { return _value; }
 private:
 	bool _value;
 };
@@ -49,12 +49,12 @@ private:
 class json_number : public json_value {
 public:
 	json_number(double value) : _value(value) { }
-	operator json_boolean() const;
-	operator json_number() const;
-	operator json_string() const;
-	operator json_array() const;
-	operator json_object() const;
-	operator double() const { return _value; }
+	__attribute__((pure)) operator json_boolean() const;
+	__attribute__((pure)) operator json_number() const;
+	__attribute__((pure)) operator json_string() const;
+	__attribute__((pure)) operator json_array() const;
+	__attribute__((pure)) operator json_object() const;
+	__attribute__((pure)) operator double() const { return _value; }
 private:
 	double _value;
 };
@@ -209,11 +209,11 @@ public:
 			return rv.str();
 		}
 	}
-	operator json_boolean() const;
-	operator json_number() const;
-	operator json_string() const;
-	operator json_array() const;
-	operator json_object() const;
+	__attribute__((pure)) operator json_boolean() const;
+	__attribute__((pure)) operator json_number() const;
+	__attribute__((pure)) operator json_string() const;
+	__attribute__((pure)) operator json_array() const;
+	__attribute__((pure)) operator json_object() const;
 	bool operator==(const json_string &x) const {
 		if(!_multipart)
 			return _size == x._size && memcmp(_value, x._value, _size) == 0;
@@ -344,11 +344,11 @@ public:
 	iterator end() { return iterator(nullptr); }
 	const size_t size() const { return _size; }
 
-	operator json_boolean() const;
-	operator json_number() const;
-	operator json_string() const;
-	operator json_array() const;
-	operator json_object() const;
+	__attribute__((pure)) operator json_boolean() const;
+	__attribute__((pure)) operator json_number() const;
+	__attribute__((pure)) operator json_string() const;
+	__attribute__((pure)) operator json_array() const;
+	__attribute__((pure)) operator json_object() const;
 protected:
 	node *_head;
 	size_t _size;
@@ -426,11 +426,11 @@ public:
 	const json_var &operator[](const json_string &key) const;
 	json_var &operator[](const json_string &key);
 
-	operator json_boolean() const;
-	operator json_number() const;
-	operator json_string() const;
-	operator json_array() const;
-	operator json_object() const;
+	__attribute__((pure)) operator json_boolean() const;
+	__attribute__((pure)) operator json_number() const;
+	__attribute__((pure)) operator json_string() const;
+	__attribute__((pure)) operator json_array() const;
+	__attribute__((pure)) operator json_object() const;
 protected:
 	void index(size_t buckets);
 	node *_head;
@@ -497,12 +497,12 @@ public:
 	}
 	virtual ~json_var();
 	json_var &operator=(const json_var &x);
-	const json_value &value() const;
-	operator json_boolean() const;
-	operator json_number() const;
-	operator json_string() const;
-	operator json_array() const;
-	operator json_object() const;
+	__attribute__((pure)) const json_value &value() const;
+	__attribute__((pure)) operator json_boolean() const;
+	__attribute__((pure)) operator json_number() const;
+	__attribute__((pure)) operator json_string() const;
+	__attribute__((pure)) operator json_array() const;
+	__attribute__((pure)) operator json_object() const;
 private:
 	void destroy_subobject();
 	enum {NONE, BOOLEAN, NUMBER, STRING, ARRAY, OBJECT} _type;

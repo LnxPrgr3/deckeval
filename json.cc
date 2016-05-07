@@ -383,7 +383,7 @@ struct false_cond {
 
 #ifdef __ARM_NEON__
 template <class CharOp, class VecOp, class Cond = false_cond>
-const char *neon_scan(const char *data, const char *end, CharOp &&cop, VecOp &&vop, Cond &&cond = Cond()) {
+__attribute__((always_inline)) inline const char *neon_scan(const char *data, const char *end, CharOp &&cop, VecOp &&vop, Cond &&cond = Cond()) {
 	if(data < end-15) {
 		vop(vld1q_u8((uint8_t *)data));
 		if(cond()) return data;
@@ -401,16 +401,16 @@ const char *neon_scan(const char *data, const char *end, CharOp &&cop, VecOp &&v
 	return data > end ? end : data;
 }
 
-const char *neon_memchr(const char *data, const char *end, char needle, char needle2) {
+__attribute__((always_inline)) inline const char *neon_memchr(const char *data, const char *end, char needle, char needle2) {
 	auto needle_expanded = vdupq_n_u8(needle);
 	auto needle2_expanded = vdupq_n_u8(needle2);
 	uint8x16_t index = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
 	bool done = false;
 	size_t offset = 0;
-	data = neon_scan(data, end, [&done,needle,needle2](char c) {
+	data = neon_scan(data, end, [&done,needle,needle2](char c) __attribute__((always_inline)) {
 		if(c == needle || c == needle2)
 			done = true;
-	}, [&done,&offset,needle_expanded,needle2_expanded,index](uint8x16_t haystack) {
+	}, [&done,&offset,needle_expanded,needle2_expanded,index](uint8x16_t haystack) __attribute__((always_inline)) {
 		auto eq = vceqq_u8(haystack, needle_expanded); // 0xff if found
 		eq = vorrq_u8(eq, vceqq_u8(haystack, needle2_expanded));
 		eq = vmvnq_u8(eq); // 0 if found
@@ -429,7 +429,7 @@ const char *neon_memchr(const char *data, const char *end, char needle, char nee
 			offset = res_char_min;
 			done = true;
 		}
-	}, [&done]() { return done; });
+	}, [&done]() __attribute__((always_inline)) { return done; });
 	return data + offset;
 }
 #elif __SSE2__
