@@ -361,11 +361,11 @@ json_allocator_heap::json_allocator_heap(size_t n) {
 }
 
 void *json_allocator_base::allocate(size_t n, size_t alignment) {
-	size_t align = _heap->pos % alignment ? alignment - _heap->pos % alignment : 0;
-	while(_heap->pos + align + n > _heap->data.size()) {
+	size_t align_mask = alignment - 1;
+	_heap->pos = (_heap->pos + align_mask) & ~align_mask;
+	while(_heap->pos + n > _heap->data.size()) {
 		_heap->data.extend(_heap->options, _heap->data.size());
 	}
-	_heap->pos += align;
 	void *rv = reinterpret_cast<char *>(_heap->data.data())+_heap->pos;
 	_heap->pos += n;
 	return rv;
