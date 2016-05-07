@@ -4,6 +4,7 @@
 #include <new>
 #include <cstring>
 #include <cstddef>
+#include <sstream>
 #include "mapping.h"
 
 class json_boolean;
@@ -60,28 +61,114 @@ private:
 
 class json_string : public json_value {
 public:
+	struct extent {
+		union {
+			const char *_value;
+			char _data[sizeof(char *)];
+		};
+		size_t _size:(sizeof(size_t)*8-2),
+		       _internal:1;
+		extent *_next;
+
+		extent(json_string &&x) {
+			_value = x._value;
+			_size = x._size;
+			_internal = false;
+			_next = nullptr;
+			x._value = nullptr;
+			x._size = 0;
+			x._dynamic = false;
+			x._multipart = false;
+			_next = nullptr;
+		}
+
+		extent(size_t size) {
+			_size = size;
+			_internal = true;
+			_next = nullptr;
+		}
+
+		const char *value() const { return _internal ? _data : _value; }
+	};
+	class const_iterator {
+	public:
+		const_iterator(const const_iterator &x) : _pos(x._pos), _end(x._end), _next(x._next) { }
+		const_iterator &operator++() {
+			++_pos;
+			while(_pos && _pos == _end) {
+				if(!_next)
+					_pos = nullptr;
+				else {
+					_pos = _next->value();
+					_end = _pos+_next->_size;
+					_next = _next->_next;
+				}
+			}
+			return *this;
+		}
+		const_iterator operator++(int) {
+			const_iterator rv = *this;
+			++*this;
+			return rv;
+		}
+		const char &operator*() const { return *_pos; }
+		bool operator!=(const const_iterator &x) { return _pos != x._pos; }
+		bool operator==(const const_iterator &x) { return _pos == x._pos; }
+	private:
+		const_iterator(const char *pos, const char *end, const extent *next) : _pos(pos), _end(end), _next(next) { }
+		const char *_pos;
+		const char *_end;
+		const extent *_next;
+
+		friend class json_string;
+	};
 	json_string(const char *value, size_t size, bool dynamic) {
 		if(dynamic) {
 			char *str = new char[size];
 			memcpy(str, value, size);
 			_value = str;
 			_dynamic = true;
+			_multipart = false;
 			_size = size;
 		} else {
 			_value = value;
 			_dynamic = false;
+			_multipart = false;
 			_size = size;
 		}
 	}
 	json_string(const char *value, size_t size) : json_string(value, size, false) { }
 	json_string(const char *value) : json_string(value, strlen(value)) { }
-	json_string(const json_string &x) : json_string(x._value, x._size, x._dynamic) { }
+	json_string(const json_string &x) {
+		if(!x._multipart) {
+			if(x._dynamic) {
+				char *str = new char[x._size];
+				memcpy(str, x._value, x._size);
+				_value = str;
+				_dynamic = true;
+				_multipart = false;
+				_size = x._size;
+			} else {
+				_value = x._value;
+				_dynamic = false;
+				_multipart = false;
+				_size = x._size;
+			}
+		} else {
+			_next = x._next;
+			_size = x._size;
+			_dynamic = false;
+			_multipart = true;
+		}
+	}
 	json_string(json_string &&x) {
 		_value = x._value;
 		_dynamic = x._dynamic;
-		_size = x._size;
+		_multipart = x._multipart;
 		x._value = nullptr;
+		_size = x._size;
 		x._dynamic = false;
+		x._multipart = false;
 		x._size = 0;
 	}
 	~json_string() {
@@ -93,28 +180,114 @@ public:
 	json_string operator=(const json_string &x) {
 		if(this != &x) {
 			this->~json_string();
-			new(this) json_string(x._value, x._size, x._dynamic);
+			new(this) json_string(x);
 		}
 		return *this;
 	}
-	const char *c_str() const { return _value; }
-	size_t size() const { return _size; }
+	bool empty() const { return !_size && !_multipart; }
+	bool is_null() const { return !_multipart && !_value; }
+	const_iterator begin() const {
+		if(!_multipart)
+			return const_iterator(_value, _value+_size, nullptr);
+		return const_iterator(_next->value(), _next->value()+_next->_size, _next->_next);
+	}
+	const_iterator end() const {
+		return const_iterator(nullptr, nullptr, nullptr);
+	}
+	operator std::string() const {
+		if(!_multipart)
+			return std::string(_value, _size);
+		else {
+			std::stringstream rv;
+			for(extent *next = _next; next; next = next->_next) {
+				rv.write(next->value(), next->_size);
+			}
+			return rv.str();
+		}
+	}
 	operator json_boolean() const;
 	operator json_number() const;
 	operator json_string() const;
 	operator json_array() const;
 	operator json_object() const;
-	bool operator==(const json_string &x) const { return _size == x._size && memcmp(_value, x._value, _size) == 0; }
+	bool operator==(const json_string &x) const {
+		if(!_multipart)
+			return _size == x._size && memcmp(_value, x._value, _size) == 0;
+		auto src = begin();
+		auto dst = x.begin();
+		while(src != end()) {
+			if(dst == x.end())
+				return false;
+			if(*src != *dst)
+				return false;
+			++src;
+			++dst;
+		}
+		return dst == x.end();
+	}
 private:
-	const char *_value;
-	size_t _size:(sizeof(size_t)*8-1),
-	       _dynamic:1;
+	union {
+		const char *_value;
+		extent *_next;
+	};
+	size_t _size:(sizeof(size_t)*8-2),
+	       _dynamic:1,
+	       _multipart:1;
+	
+	friend std::ostream &operator<<(std::ostream &, const json_string &);
+	template <class Allocator> friend class json_string_imp;
 };
 
 inline std::ostream &operator<<(std::ostream &out, const json_string &x) {
-	out.write(x.c_str(), x.size());
+	if(!x._multipart) {
+		out.write(x._value, x._size);
+	} else {
+		for(json_string::extent *next = x._next; next; next = next->_next) {
+			out.write(next->value(), next->_size);
+		}
+	}
 	return out;
 }
+
+template <class Allocator = std::allocator<json_string::extent>>
+class json_string_imp : public json_string {
+public:
+	json_string_imp(const char *value, size_t size, bool dynamic, const Allocator &allocator = Allocator()) : json_string(value, size, dynamic), _allocator(allocator) { }
+	json_string_imp(const char *value, size_t size, const Allocator allocator = Allocator()) : json_string_imp(value, size, false, allocator) { }
+	json_string_imp(const char *value, const Allocator allocator = Allocator()) : json_string_imp(value, strlen(value), allocator) { }
+	void append(json_string &&x) {
+		make_multipart();
+		extent *next = _allocator.allocate(1);
+		_allocator.construct(next, std::move(x));
+		*_tail = next;
+		_tail = &next->_next;
+	}
+	char *append_internal(size_t size) {
+		make_multipart();
+		extent *next = _allocator.allocate(1);
+		_allocator.construct(next, size);
+		*_tail = next;
+		_tail = &next->_next;
+		return next->_data;
+	}
+private:
+	void make_multipart() {
+		if(!_multipart) {
+			if(_size) {
+				extent *first = _allocator.allocate(1);
+				_allocator.construct(first, std::move(*this));
+				_next = first;
+				_tail = &first->_next;
+			} else {
+				_value = nullptr;
+				_tail = &_next;
+			}
+			_multipart = true;
+		}
+	}
+	Allocator _allocator;
+	extent **_tail;
+};
 
 template <class Allocator>
 class json_array_imp;
@@ -492,6 +665,7 @@ private:
 	json_allocator<char> _allocator;
 
 	friend class json_parse_callbacks;
+	friend json_document json_parse(char *, char *);
 };
 
 class json_exception : public std::exception {

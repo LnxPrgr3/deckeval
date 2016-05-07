@@ -13,11 +13,9 @@ struct hash<json_string> {
 	size_t operator()(const json_string &x) const noexcept {
 		static const size_t offset_basis = sizeof(size_t) == 4 ? 2166136261U : 14695981039346656037U;
 		static const size_t prime = sizeof(size_t) == 4 ? 16777619U : 1099511628211U;
-		const char *str = x.c_str();
-		const char *end = str+x.size();
 		size_t hash = offset_basis;
-		while(str != end) {
-			hash ^= *str++;
+		for(auto c: x) {
+			hash ^= c;
 			hash *= prime;
 		}
 		return hash;
@@ -89,12 +87,10 @@ public:
 		}
 
 		cost(const json_string &x) : cost() {
-			const char *str = x.c_str();
-			const char *end = str+x.size();
 			try {
-				parse(str, end);
+				parse(x.begin(), x.end());
 			} catch (const std::exception &e) {
-				throw std::runtime_error(std::string("Invalid mana cost: ") + std::string(str, x.size()));
+				throw std::runtime_error(std::string("Invalid mana cost: ") + std::string(x));
 			}
 		}
 		int white() const { return _white; }
@@ -137,8 +133,8 @@ public:
 		int generic() const { return _generic; }
 	private:
 		void parse_error();
-		void parse_next(const char *str, const char *end);
-		void parse(const char *str, const char *end);
+		void parse_next(json_string::const_iterator str, json_string::const_iterator end);
+		void parse(json_string::const_iterator str, json_string::const_iterator end);
 
 		unsigned int _white:6,
 		             _2white:6,
@@ -266,7 +262,7 @@ public:
 	card find_card(const json_string &name) {
 		auto res = _cards.find(name);
 		if(res == _cards.end())
-			throw std::runtime_error(std::string("Card not found: ") + std::string(name.c_str(), name.size()));
+			throw std::runtime_error(std::string("Card not found: ") + std::string(name));
 		return res->second;
 	}
 	card find_card(const char *name) {

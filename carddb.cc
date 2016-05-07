@@ -6,7 +6,7 @@ void card_database::cost::parse_error() {
 	throw std::runtime_error("Invalid mana cost");
 }
 
-void card_database::cost::parse_next(const char *str, const char *end) {
+void card_database::cost::parse_next(json_string::const_iterator str, json_string::const_iterator end) {
 	_exists = 1;
 	if(str == end)
 		parse_error();
@@ -15,15 +15,16 @@ void card_database::cost::parse_next(const char *str, const char *end) {
 	return parse(str, end);
 }
 
-void card_database::cost::parse(const char *str, const char *end) {
+void card_database::cost::parse(json_string::const_iterator str, json_string::const_iterator end) {
 	if(str == end)
 		return;
 	if(*str++ != '{')
 		parse_error();
 	if(str == end)
 		parse_error();
-	switch(*str++) {
+	switch(*str) {
 	case 'W':
+		++str;
 		if(str != end && *str == '/') {
 			++str;
 			if(str == end)
@@ -51,6 +52,7 @@ void card_database::cost::parse(const char *str, const char *end) {
 			++_white;
 		return parse_next(str, end);
 	case 'U':
+		++str;
 		if(str != end && *str == '/') {
 			++str;
 			if(str == end)
@@ -78,6 +80,7 @@ void card_database::cost::parse(const char *str, const char *end) {
 			++_blue;
 		return parse_next(str, end);
 	case 'B':
+		++str;
 		if(str != end && *str == '/') {
 			++str;
 			if(str == end)
@@ -105,6 +108,7 @@ void card_database::cost::parse(const char *str, const char *end) {
 			++_black;
 		return parse_next(str, end);
 	case 'R':
+		++str;
 		if(str != end && *str == '/') {
 			++str;
 			if(str == end)
@@ -132,6 +136,7 @@ void card_database::cost::parse(const char *str, const char *end) {
 			++_red;
 		return parse_next(str, end);
 	case 'G':
+		++str;
 		if(str != end && *str == '/') {
 			++str;
 			if(str == end)
@@ -160,23 +165,24 @@ void card_database::cost::parse(const char *str, const char *end) {
 		return parse_next(str, end);
 	case 'C':
 		++_colorless;
-		return parse_next(str, end);
+		return parse_next(++str, end);
 	case 'X':
 		++_x;
-		return parse_next(str, end);
+		return parse_next(++str, end);
 	case 'Y':
 		++_y;
-		return parse_next(str, end);
+		return parse_next(++str, end);
 	case 'Z':
 		++_z;
-		return parse_next(str, end);
+		return parse_next(++str, end);
 	case 'T':
 		_tap = 1;
-		return parse_next(str, end);
+		return parse_next(++str, end);
 	case 'q':
 		_untap = 1;
-		return parse_next(str, end);
+		return parse_next(++str, end);
 	case 'h':
+		++str;
 		if(str == end)
 			parse_error();
 		switch(*str++) {
@@ -201,12 +207,13 @@ void card_database::cost::parse(const char *str, const char *end) {
 		return parse_next(str, end);
 	case '0':
 	case '1':
-	case '2':
-		if(str != end && *str == '/') {
-			++str;
+	case '2': {
+		auto str2 = str; ++str2;
+		if(str2 != end && *str2 == '/') {
+			++str2;
 			if(str == end)
 				parse_error();
-			switch(*str++) {
+			switch(*str2++) {
 				case 'W':
 					++_2white;
 					break;
@@ -223,8 +230,9 @@ void card_database::cost::parse(const char *str, const char *end) {
 					++_2green;
 					break;
 			}
-			return parse_next(str, end);
+			return parse_next(str2, end);
 		}
+	}
 	case '3':
 	case '4':
 	case '5':
@@ -234,7 +242,6 @@ void card_database::cost::parse(const char *str, const char *end) {
 	case '9':
 		if(_generic != 0)
 			parse_error();
-		--str;
 		while(str != end && *str >= '0' && *str <= '9') {
 			_generic = _generic*10 + (*str++ - '0');
 		}
@@ -272,7 +279,6 @@ card_database::card_database(const char *filename) : _mapping(load(filename)), _
 mapping card_database::load(const char *filename) {
 	return mapping::options()
 		.file(file::options(filename).open())
-		.write(false)
 		.map();
 }
 

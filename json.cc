@@ -19,11 +19,9 @@ struct hash<json_string> {
 	size_t operator()(const json_string &x) const noexcept {
 		static const size_t offset_basis = sizeof(size_t) == 4 ? 2166136261U : 14695981039346656037U;
 		static const size_t prime = sizeof(size_t) == 4 ? 16777619U : 1099511628211U;
-		const char *str = x.c_str();
-		const char *end = str+x.size();
 		size_t hash = offset_basis;
-		while(str != end) {
-			hash ^= *str++;
+		for(auto c: x) {
+			hash ^= c;
 			hash *= prime;
 		}
 		return hash;
@@ -95,7 +93,7 @@ json_number::operator json_object() const {
 }
 
 json_string::operator json_boolean() const {
-	return size();
+	return !empty();
 }
 
 json_string::operator json_number() const {
@@ -563,25 +561,19 @@ char *json_str_write(char *pos, char c) {
 	return ++pos;
 }
 
-char *json_str_write_codepoint(char *pos, unsigned int codepoint) {
+template <class Allocator>
+void json_str_write_codepoint(json_string_imp<Allocator> &str, unsigned int codepoint) {
 	if(codepoint < 0b10000000) {
-		pos = json_str_write(pos, codepoint);
+		*str.append_internal(1) = codepoint;
 	} else {
 		int len = codepoint < 0x800 ? 2 :
 			      codepoint < 0x10000 ? 3 :
-			      codepoint < 0x200000 ? 4 :
-			      codepoint < 0x4000000 ? 5 :
-			      6;
+		          4;
+		char *pos = str.append_internal(len);
 		codepoint = codepoint << (32 - 5 * len - 1);
 		pos = json_str_write(pos,  (0xffu << (8 - len)) | ((codepoint & (0xffu << (32 - (7 - len)))) >> (24 + len + 1)));
 		codepoint <<= 7 - len;
 		switch(len) {
-		case 6:
-			pos = json_str_write(pos,  0b10000000 | ((codepoint & 0xfc000000) >> 26));
-			codepoint <<= 6;
-		case 5:
-			pos = json_str_write(pos,  0b10000000 | ((codepoint & 0xfc000000) >> 26));
-			codepoint <<= 6;
 		case 4:
 			pos = json_str_write(pos,  0b10000000 | ((codepoint & 0xfc000000) >> 26));
 			codepoint <<= 6;
@@ -592,7 +584,6 @@ char *json_str_write_codepoint(char *pos, unsigned int codepoint) {
 			pos = json_str_write(pos,  0b10000000 | ((codepoint & 0xfc000000) >> 26));
 		}
 	}
-	return pos;
 }
 
 int json_parse_hex(char *begin, char *end) {
@@ -607,8 +598,8 @@ int json_parse_hex(char *begin, char *end) {
 		throw json_exception("Unexpected character in unicode escape sequence");
 }
 
-char *json_parse_string_slow(char *str, char *begin, char *end, json_callbacks &cb) {
-	char *wpos = begin;
+template <class Allocator>
+char *json_parse_string_slow(json_string_imp<Allocator> &&str, char *begin, char *end, json_callbacks &cb) {
 	while(begin != end && *begin != '"') {
 		if(*begin == '\\') {
 			unsigned int codepoint = 0;
@@ -617,75 +608,92 @@ char *json_parse_string_slow(char *str, char *begin, char *end, json_callbacks &
 			case '"':
 			case '\\':
 			case '/':
-				wpos = json_str_write(wpos, *begin);
+				*str.append_internal(1) = *begin;
 				break;
 			case 'b':
-				wpos = json_str_write(wpos, '\b');
+				*str.append_internal(1) = '\b';
 				break;
 			case 'f':
-				wpos = json_str_write(wpos, '\f');
+				*str.append_internal(1) = '\f';
 				break;
 			case 'n':
-				wpos = json_str_write(wpos, '\n');
+				*str.append_internal(1) = '\n';
 				break;
 			case 'r':
-				wpos = json_str_write(wpos, '\r');
+				*str.append_internal(1) = '\r';
 				break;
 			case 't':
-				wpos = json_str_write(wpos, '\t');
+				*str.append_internal(1) = '\t';
 				break;
 			case 'u':
 				codepoint = json_parse_hex(++begin, end);
 				codepoint = codepoint * 16 + json_parse_hex(++begin, end);
 				codepoint = codepoint * 16 + json_parse_hex(++begin, end);
 				codepoint = codepoint * 16 + json_parse_hex(++begin, end);
-				wpos = json_str_write_codepoint(wpos, codepoint);
+				json_str_write_codepoint(str, codepoint);
 				break;
 			default:
 				throw json_exception("Unrecognized string escape sequence");
 			}
 		} else
-			wpos = json_str_write(wpos, *begin);
+			*str.append_internal(1) = *begin;
 		++begin;
 #ifdef __ARM_NEON__
 		char *next = neon_memchr(begin, end, '\\', '"');
 		size_t size = next-begin;
-		memmove(wpos, begin, size);
-		wpos += size;
-		begin = next;
+		if(size) {
+			str.append(json_string(begin, size));
+			begin = next;
+		}
 #elif __SSE2__
 		char *next = sse2_memchr(begin, end, '\\', '"');
 		size_t size = next-begin;
-		memmove(wpos, begin, size);
-		wpos += size;
+		if(size) {
+			str.append(json_string(begin, size));
+			begin = next;
+		}
+#else
+	char *next = begin;
+	while(next != end && *next != '"' && *next != '\\') ++next;
+	size_t size = next-begin;
+	if(size) {
+		str.append(json_string(begin, size));
 		begin = next;
+	}
 #endif
 	}
 	json_nonempty(begin, end);
-	cb.string(json_string(str, wpos-str));
+	cb.string(std::move(str));
 	return ++begin;
 }
 
-char *json_parse_string(char *begin, char *end, json_callbacks &cb) {
+template <class Allocator>
+json_string_imp<typename Allocator::template rebind<json_string::extent>::other> make_string_imp(Allocator &allocator, char *begin, char *end) {
+	typename Allocator::template rebind<json_string::extent>::other a2(allocator);
+	return json_string_imp<typename Allocator::template rebind<json_string::extent>::other>(begin, end-begin, a2);
+}
+
+template <class Allocator>
+char *json_parse_string(Allocator &allocator, char *begin, char *end, json_callbacks &cb) {
 	char *str = begin;
 #ifdef __ARM_NEON__
 	begin = neon_memchr(begin, end, '\\', '"');
 	if(*begin == '\\')
-		return json_parse_string_slow(str, begin, end, cb);
+		return json_parse_string_slow(make_string_imp(allocator, str, begin), begin, end, cb);
 	json_nonempty(begin, end);
 	cb.string(json_string(str, begin-str));
 	return ++begin;
 #elif __SSE2__
 	begin = sse2_memchr(begin, end, '\\', '"');
 	if(*begin == '\\')
-		return json_parse_string_slow(str, begin, end, cb);
+		return json_parse_string_slow(make_string_imp(allocator, str, begin), begin, end, cb);
 	json_nonempty(begin, end);
 	cb.string(json_string(str, begin-str));
 	return ++begin;
 #else
 	while(begin != end && *begin != '"') {
 		if(*begin == '\\')
-			return json_parse_string_slow(str, begin, end, cb);
+			return json_parse_string_slow(make_string_imp(allocator, str, begin), begin, end, cb);
 		++begin;
 	}
 	json_nonempty(begin, end);
@@ -694,12 +702,13 @@ char *json_parse_string(char *begin, char *end, json_callbacks &cb) {
 #endif
 }
 
-char *json_parse_array(char *begin, char *end, json_callbacks &cb) {
+template <class Allocator>
+char *json_parse_array(Allocator &allocator, char *begin, char *end, json_callbacks &cb) {
 	cb.array_begin();
 	begin = json_skip_whitespace(begin, end);
 	json_nonempty(begin, end);
 	while(*begin != ']') {
-		begin = json_parse(begin, end, cb);
+		begin = json_parse(allocator, begin, end, cb);
 		begin = json_skip_whitespace(begin, end);
 		json_nonempty(begin, end);
 		if(*begin == ',') {
@@ -712,19 +721,20 @@ char *json_parse_array(char *begin, char *end, json_callbacks &cb) {
 	return ++begin;
 }
 
-char *json_parse_object(char *begin, char *end, json_callbacks &cb) {
+template <class Allocator>
+char *json_parse_object(Allocator &allocator, char *begin, char *end, json_callbacks &cb) {
 	cb.object_begin();
 	begin = json_skip_whitespace(begin, end);
 	json_nonempty(begin, end);
 	while(*begin != '}') {
 		if(*begin != '"')
 			throw json_exception("Invalid object key");
-		begin = json_parse_string(++begin, end, cb);
+		begin = json_parse_string(allocator, ++begin, end, cb);
 		begin = json_skip_whitespace(begin, end);
 		json_nonempty(begin, end);
 		begin = json_parse_char(begin, end, ':');
 		begin = json_skip_whitespace(begin, end);
-		begin = json_parse(begin, end, cb);
+		begin = json_parse(allocator, begin, end, cb);
 		begin = json_skip_whitespace(begin, end);
 		json_nonempty(begin, end);
 		if(*begin == ',') {
@@ -737,7 +747,8 @@ char *json_parse_object(char *begin, char *end, json_callbacks &cb) {
 	return ++begin;
 }
 
-char *json_parse(char *begin, char *end, json_callbacks &cb) {
+template <class Allocator>
+char *json_parse(Allocator &allocator, char *begin, char *end, json_callbacks &cb) {
 	begin = json_skip_whitespace(begin, end);
 	json_nonempty(begin, end);
 	switch(*begin) {
@@ -766,16 +777,21 @@ char *json_parse(char *begin, char *end, json_callbacks &cb) {
 		begin = json_parse_number(begin, end, cb);
 		break;
 	case '"':
-		begin = json_parse_string(++begin, end, cb);
+		begin = json_parse_string(allocator, ++begin, end, cb);
 		break;
 	case '{':
-		begin = json_parse_object(++begin, end, cb);
+		begin = json_parse_object(allocator, ++begin, end, cb);
 		break;
 	case '[':
-		begin = json_parse_array(++begin, end, cb);
+		begin = json_parse_array(allocator, ++begin, end, cb);
 		break;
 	}
 	return begin;
+}
+
+char *json_parse(char *begin, char *end, json_callbacks &cb) {
+	std::allocator<void> allocator;
+	return json_parse(allocator, begin, end, cb);
 }
 
 struct json_parse_callbacks : public json_callbacks {
@@ -839,7 +855,7 @@ struct json_parse_callbacks : public json_callbacks {
 				next->arr.push_back(std::move(value));
 				break;
 			case object::OBJECT:
-				if(next->key.c_str() == nullptr) {
+				if(next->key.is_null()) {
 					next->key = value;
 				} else {
 					next->obj.push_back(next->key, std::move(value));
@@ -890,7 +906,7 @@ struct json_parse_callbacks : public json_callbacks {
 
 json_document json_parse(char *begin, char *end) {
 	json_parse_callbacks cb((end-begin)*sizeof(void *));
-	json_parse(begin, end, cb);
+	json_parse(cb.rv._allocator, begin, end, cb);
 	cb.rv.shrink_to_fit();
 	return std::move(cb.rv);
 }
