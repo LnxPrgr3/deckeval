@@ -670,7 +670,7 @@ private:
 	json_allocator<char> _allocator;
 
 	friend class json_parse_callbacks;
-	friend json_document json_parse(char *, char *);
+	friend json_document json_parse(const char *, const char *);
 };
 
 class json_exception : public std::exception {
@@ -693,8 +693,8 @@ public:
 	virtual void object_end() = 0;
 };
 
-char *json_parse(char *begin, char *end, json_callbacks &cb);
-json_document json_parse(char *begin, char *end);
+const char *json_parse(const char *begin, const char *end, json_callbacks &cb);
+json_document json_parse(const char *begin, const char *end);
 
 template <class allocator>
 json_array_imp<allocator>::~json_array_imp() {

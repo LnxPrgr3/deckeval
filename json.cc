@@ -383,11 +383,11 @@ struct false_cond {
 
 #ifdef __ARM_NEON__
 template <class CharOp, class VecOp, class Cond = false_cond>
-char *neon_scan(char *data, char *end, CharOp &&cop, VecOp &&vop, Cond &&cond = Cond()) {
+const char *neon_scan(const char *data, const char *end, CharOp &&cop, VecOp &&vop, Cond &&cond = Cond()) {
 	if(data < end-15) {
 		vop(vld1q_u8((uint8_t *)data));
 		if(cond()) return data;
-		char *nd __attribute__((__aligned__(16))) = (char *)(((uintptr_t)data / 16 + 1) * 16);
+		const char *nd __attribute__((__aligned__(16))) = (const char *)(((uintptr_t)data / 16 + 1) * 16);
 		while(nd < end) {
 			vop(vld1q_u8((uint8_t *)nd));
 			if(cond()) return nd;
@@ -401,7 +401,7 @@ char *neon_scan(char *data, char *end, CharOp &&cop, VecOp &&vop, Cond &&cond = 
 	return data > end ? end : data;
 }
 
-char *neon_memchr(char *data, char *end, char needle, char needle2) {
+const char *neon_memchr(const char *data, const char *end, char needle, char needle2) {
 	auto needle_expanded = vdupq_n_u8(needle);
 	auto needle2_expanded = vdupq_n_u8(needle2);
 	uint8x16_t index = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
@@ -434,11 +434,11 @@ char *neon_memchr(char *data, char *end, char needle, char needle2) {
 }
 #elif __SSE2__
 template <class CharOp, class VecOp, class Cond = false_cond>
-char *sse2_scan(char *data, char *end, CharOp &&cop, VecOp &&vop, Cond &&cond = Cond()) {
+const char *sse2_scan(const char *data, const char *end, CharOp &&cop, VecOp &&vop, Cond &&cond = Cond()) {
 	if(data < end-15) {
 		vop(_mm_loadu_si128((const __m128i *)data));
 		if(cond()) return data;
-		char *nd __attribute__((__aligned__(16))) = (char *)(((uintptr_t)data / 16 + 1) * 16);
+		const char *nd __attribute__((__aligned__(16))) = (const char *)(((uintptr_t)data / 16 + 1) * 16);
 		while(nd < end) {
 			vop(_mm_load_si128((const __m128i *)nd));
 			if(cond()) return nd;
@@ -452,7 +452,7 @@ char *sse2_scan(char *data, char *end, CharOp &&cop, VecOp &&vop, Cond &&cond = 
 	return data > end ? end : data;
 }
 
-char *sse2_memchr(char *data, char *end, char needle, char needle2) {
+const char *sse2_memchr(const char *data, const char *end, char needle, char needle2) {
 	auto needle_expanded = _mm_set1_epi8(needle);
 	auto needle2_expanded = _mm_set1_epi8(needle2);
 	bool done = false;
@@ -473,7 +473,7 @@ char *sse2_memchr(char *data, char *end, char needle, char needle2) {
 }
 #endif
 
-char *json_skip_whitespace(char *begin, char *end) {
+const char *json_skip_whitespace(const char *begin, const char *end) {
 	while(begin != end) {
 		switch(*begin) {
 		case ' ':
@@ -489,18 +489,18 @@ char *json_skip_whitespace(char *begin, char *end) {
 	return begin;
 }
 
-void json_nonempty(char *begin, char *end) {
+void json_nonempty(const char *begin, const char *end) {
 	if(begin == end)
 		throw json_exception("Unexpected end of input");
 }
 
-char *json_parse_char(char *begin, char *end, char c) {
+const char *json_parse_char(const char *begin, const char *end, char c) {
 	if(begin != end && *begin == c)
 		return ++begin;
 	throw json_exception("");
 }
 
-char *json_parse_boolean(char *begin, char *end, json_callbacks &cb) {
+const char *json_parse_boolean(const char *begin, const char *end, json_callbacks &cb) {
 	try {
 		switch(*begin) {
 		case 't':
@@ -526,7 +526,7 @@ char *json_parse_boolean(char *begin, char *end, json_callbacks &cb) {
 	}
 }
 
-char *json_parse_number(char *begin, char *end, json_callbacks &cb) {
+const char *json_parse_number(const char *begin, const char *end, json_callbacks &cb) {
 	long number = 0;
 	long frac = 0;
 	long exp = 0;
@@ -601,7 +601,7 @@ void json_str_write_codepoint(json_string_imp<Allocator> &str, unsigned int code
 	}
 }
 
-int json_parse_hex(char *begin, char *end) {
+int json_parse_hex(const char *begin, const char *end) {
 	json_nonempty(begin, end);
 	if(*begin >= '0' && *begin <= '9')
 		return *begin - '0';
@@ -614,7 +614,7 @@ int json_parse_hex(char *begin, char *end) {
 }
 
 template <class Allocator>
-char *json_parse_string_slow(json_string_imp<Allocator> &&str, char *begin, char *end, json_callbacks &cb) {
+const char *json_parse_string_slow(json_string_imp<Allocator> &&str, const char *begin, const char *end, json_callbacks &cb) {
 	while(begin != end && *begin != '"') {
 		if(*begin == '\\') {
 			unsigned int codepoint = 0;
@@ -654,21 +654,21 @@ char *json_parse_string_slow(json_string_imp<Allocator> &&str, char *begin, char
 			*str.append_internal(1) = *begin;
 		++begin;
 #ifdef __ARM_NEON__
-		char *next = neon_memchr(begin, end, '\\', '"');
+		const char *next = neon_memchr(begin, end, '\\', '"');
 		size_t size = next-begin;
 		if(size) {
 			str.append(json_string(begin, size));
 			begin = next;
 		}
 #elif __SSE2__
-		char *next = sse2_memchr(begin, end, '\\', '"');
+		const char *next = sse2_memchr(begin, end, '\\', '"');
 		size_t size = next-begin;
 		if(size) {
 			str.append(json_string(begin, size));
 			begin = next;
 		}
 #else
-	char *next = begin;
+	const char *next = begin;
 	while(next != end && *next != '"' && *next != '\\') ++next;
 	size_t size = next-begin;
 	if(size) {
@@ -683,14 +683,14 @@ char *json_parse_string_slow(json_string_imp<Allocator> &&str, char *begin, char
 }
 
 template <class Allocator>
-json_string_imp<typename Allocator::template rebind<json_string::extent>::other> make_string_imp(Allocator &allocator, char *begin, char *end) {
+json_string_imp<typename Allocator::template rebind<json_string::extent>::other> make_string_imp(Allocator &allocator, const char *begin, const char *end) {
 	typename Allocator::template rebind<json_string::extent>::other a2(allocator);
 	return json_string_imp<typename Allocator::template rebind<json_string::extent>::other>(begin, end-begin, a2);
 }
 
 template <class Allocator>
-__attribute__((always_inline)) char *json_parse_string(Allocator &allocator, char *begin, char *end, json_callbacks &cb) {
-	char *str = begin;
+__attribute__((always_inline)) inline const char *json_parse_string(Allocator &allocator, const char *begin, const char *end, json_callbacks &cb) {
+	const char *str = begin;
 #ifdef __ARM_NEON__
 	begin = neon_memchr(begin, end, '\\', '"');
 	if(*begin == '\\')
@@ -718,7 +718,7 @@ __attribute__((always_inline)) char *json_parse_string(Allocator &allocator, cha
 }
 
 template <class Allocator>
-char *json_parse_array(Allocator &allocator, char *begin, char *end, json_callbacks &cb) {
+const char *json_parse_array(Allocator &allocator, const char *begin, const char *end, json_callbacks &cb) {
 	cb.array_begin();
 	begin = json_skip_whitespace(begin, end);
 	json_nonempty(begin, end);
@@ -737,7 +737,7 @@ char *json_parse_array(Allocator &allocator, char *begin, char *end, json_callba
 }
 
 template <class Allocator>
-char *json_parse_object(Allocator &allocator, char *begin, char *end, json_callbacks &cb) {
+const char *json_parse_object(Allocator &allocator, const char *begin, const char *end, json_callbacks &cb) {
 	cb.object_begin();
 	begin = json_skip_whitespace(begin, end);
 	json_nonempty(begin, end);
@@ -763,7 +763,7 @@ char *json_parse_object(Allocator &allocator, char *begin, char *end, json_callb
 }
 
 template <class Allocator>
-char *json_parse(Allocator &allocator, char *begin, char *end, json_callbacks &cb) {
+const char *json_parse(Allocator &allocator, const char *begin, const char *end, json_callbacks &cb) {
 	begin = json_skip_whitespace(begin, end);
 	json_nonempty(begin, end);
 	switch(*begin) {
@@ -804,7 +804,7 @@ char *json_parse(Allocator &allocator, char *begin, char *end, json_callbacks &c
 	return begin;
 }
 
-char *json_parse(char *begin, char *end, json_callbacks &cb) {
+const char *json_parse(const char *begin, const char *end, json_callbacks &cb) {
 	std::allocator<void> allocator;
 	return json_parse(allocator, begin, end, cb);
 }
@@ -919,7 +919,7 @@ struct json_parse_callbacks : public json_callbacks {
 	std::vector<object> stack;
 };
 
-json_document json_parse(char *begin, char *end) {
+json_document json_parse(const char *begin, const char *end) {
 	json_parse_callbacks cb((end-begin)*sizeof(void *));
 	json_parse(cb.rv._allocator, begin, end, cb);
 	cb.rv.shrink_to_fit();
