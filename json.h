@@ -187,8 +187,12 @@ public:
 	bool empty() const { return !_size && !_multipart; }
 	bool is_null() const { return !_multipart && !_value; }
 	const_iterator begin() const {
-		if(!_multipart)
-			return const_iterator(_value, _value+_size, nullptr);
+		if(!_multipart) {
+			if(_size)
+				return const_iterator(_value, _value+_size, nullptr);
+			else
+				return end();
+		}
 		return const_iterator(_next->value(), _next->value()+_next->_size, _next->_next);
 	}
 	const_iterator end() const {
