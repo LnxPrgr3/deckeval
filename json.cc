@@ -427,6 +427,8 @@ __attribute__((always_inline)) inline const char *neon_memchr(const char *data, 
 			done = true;
 		}
 	}, [&done]() __attribute__((always_inline)) { return done; });
+	if(data == end)
+		return data;
 	return data + offset;
 }
 #elif __SSE2__
@@ -466,6 +468,8 @@ const char *sse2_memchr(const char *data, const char *end, char needle, char nee
 			done = true;
 		}
 	}, [&done]() { return done; });
+	if(data == end)
+		return data;
 	return data + offset;
 }
 #endif
