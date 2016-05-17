@@ -2,6 +2,91 @@
 #include "json.h"
 #include "carddb.h"
 
+card_database::cost &card_database::cost::operator+=(const card_database::cost &x) {
+	_white += x._white;
+	_2white += x._2white;
+	_whiteblue += x._whiteblue;
+	_whiteblack += x._whiteblack;
+	_whitered += x._whitered;
+	_whitegreen += x._whitegreen;
+	_whitephyrexian += x._whitephyrexian;
+	_blue += x._blue;
+	_2blue += x._2blue;
+	_bluewhite += x._bluewhite;
+	_blueblack += x._blueblack;
+	_bluered += x._bluered;
+	_bluegreen += x._bluegreen;
+	_bluephyrexian += x._bluephyrexian;
+	_black += x._black;
+	_2black += x._2black;
+	_blackred += x._blackred;
+	_blackgreen += x._blackgreen;
+	_blackphyrexian += x._blackphyrexian;
+	_red += x._red;
+	_2red += x._2red;
+	_redgreen += x._redgreen;
+	_redphyrexian += x._redphyrexian;
+	_green += x._green;
+	_2green += x._2green;
+	_greenphyrexian += x._greenphyrexian;
+	_colorless += x._colorless;
+	_x += x._x;
+	_y += x._y;
+	_z += x._z;
+	_halfwhite += x._halfwhite;
+	_halfblue += x._halfblue;
+	_halfblack += x._halfblack;
+	_halfred += x._halfred;
+	_halfgreen += x._halfgreen;
+	_exists += x._exists;
+	_tap += x._tap;
+	_untap += x._untap;
+	_generic += x._generic;
+	return *this;
+}
+
+bool card_database::cost::operator==(const card_database::cost &x) const {
+	return _white == x._white &&
+	       _2white == x._2white &&
+	       _whiteblue == x._whiteblue &&
+	       _whiteblack == x._whiteblack &&
+	       _whitered == x._whitered &&
+	       _whitegreen == x._whitegreen &&
+	       _whitephyrexian == x._whitephyrexian &&
+	       _blue == x._blue &&
+	       _2blue == x._2blue &&
+	       _bluewhite == x._bluewhite &&
+	       _blueblack == x._blueblack &&
+	       _bluered == x._bluered &&
+	       _bluegreen == x._bluegreen &&
+	       _bluephyrexian == x._bluephyrexian &&
+	       _black == x._black &&
+	       _2black == x._2black &&
+	       _blackred == x._blackred &&
+	       _blackgreen == x._blackgreen &&
+	       _blackphyrexian == x._blackphyrexian &&
+	       _red == x._red &&
+	       _2red == x._2red &&
+	       _redgreen == x._redgreen &&
+	       _redphyrexian == x._redphyrexian &&
+	       _green == x._green &&
+	       _2green == x._2green &&
+	       _greenphyrexian == x._greenphyrexian &&
+	       _colorless == x._colorless &&
+	       _x == x._x &&
+	       _y == x._y &&
+	       _z == x._z &&
+	       _halfwhite == x._halfwhite &&
+	       _halfblue == x._halfblue &&
+	       _halfblack == x._halfblack &&
+	       _halfred == x._halfred &&
+	       _halfgreen == x._halfgreen &&
+	       _exists == x._exists &&
+	       _tap == x._tap &&
+	       _untap == x._untap &&
+	       _generic == x._generic;
+}
+
 void card_database::cost::parse_error() {
 	throw std::runtime_error("Invalid mana cost");
 }

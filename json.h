@@ -417,6 +417,7 @@ public:
 		x._index = nullptr;
 	}
 	virtual ~json_object() { }
+	json_object &operator=(const json_object &x) = default;
 
 	const_iterator begin() const { return const_iterator(_head); }
 	iterator begin() { return iterator(_head); }

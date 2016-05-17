@@ -1,4 +1,5 @@
 #include "carddb.h"
+#include "game.h"
 #include <iostream>
 #include <memory>
 
@@ -56,12 +57,40 @@ void run_test(const test &t) {
 	std::cout << t.name() << ": " << std::flush << (t() ? "PASS" : "FAIL") << std::endl;
 }
 
+static std::unique_ptr<card_database> sets;
+static game game;
+static player player;
+
+bool test_basic_land(const char *name, const char *result) {
+	player.reset_mana();
+	auto land = game.add(player, card(sets->find_card(name)));
+	land.tap();
+	bool res = player.mana_pool() == card_database::cost(result);
+	game.remove(land);
+	return res;
+}
+
 int main(int argc, char *argv[]) {
-	std::unique_ptr<card_database> sets;
+	game.add(player);
 	std::unique_ptr<test> tests[] = {
-		new_test("Cards load", [&sets]() {
+		new_test("Cards load", []() {
 			sets = std::unique_ptr<card_database>(new card_database("cards.json"));
 			return true;
+		}),
+		new_test("Plains taps for white", []() {
+			return test_basic_land("Plains", "{W}");
+		}),
+		new_test("Islands tap for blue", []() {
+			return test_basic_land("Island", "{U}");
+		}),
+		new_test("Swamps tap for black", []() {
+			return test_basic_land("Swamp", "{B}");
+		}),
+		new_test("Mountains tap for red", []() {
+			return test_basic_land("Mountain", "{R}");
+		}),
+		new_test("Forests tap for green", []() {
+			return test_basic_land("Forest", "{G}");
 		})
 	};
 	for(const auto &t: tests) {

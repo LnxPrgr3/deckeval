@@ -1,0 +1,57 @@
+#include "game.h"
+
+card::card(const card_database::card &c) : card_database::card(c) {
+	if(name() == "Plains") {
+		_mana = card_database::cost("{W}");
+	} else if(name() == "Island") {
+		_mana = card_database::cost("{U}");
+	} else if(name() == "Swamp") {
+		_mana = card_database::cost("{B}");
+	} else if(name() == "Mountain") {
+		_mana = card_database::cost("{R}");
+	} else if(name() == "Forest") {
+		_mana = card_database::cost("{G}");
+	}
+}
+
+const card_database::cost &player::mana_pool() const {
+	return _mana_pool;
+}
+
+void player::add_mana(const card_database::cost &mana) {
+	_mana_pool += mana;
+}
+
+void player::reset_mana() {
+	_mana_pool = card_database::cost();
+}
+
+permanent::permanent(const card &c) : card(c) {
+	_controller = nullptr;
+	_tapped = false;
+}
+
+void permanent::tap() {
+	if(!_tapped) {
+		_tapped = true;
+		_controller->add_mana(_mana);
+	}
+}
+
+player *&game::add(player &player) {
+	_players.push_back(&player);
+	return _players.back();
+}
+
+permanent &game::add(player &player, permanent &&permanent) {
+	_battlefield.push_back(std::move(permanent));
+	auto &res = _battlefield.back();
+	res._controller = &player;
+	return res;
+}
+
+void game::remove(permanent &p) {
+	auto it = _battlefield.begin();
+	it += &p - &*it;
+	_battlefield.erase(it);
+}

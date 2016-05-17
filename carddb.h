@@ -146,6 +146,8 @@ public:
 		bool tap() const { return _tap; }
 		bool untap() const { return _untap; }
 		int generic() const { return _generic; }
+		cost &operator+=(const cost &x);
+		bool operator==(const cost &x) const;
 	private:
 		void parse_error();
 		void parse_next(json_string::const_iterator str, json_string::const_iterator end);
@@ -222,7 +224,7 @@ public:
 	private:
 		card(const json_object &x) : _card(x) { }
 
-		const json_object _card;
+		json_object _card;
 	};
 
 	class card_set {
