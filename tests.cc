@@ -91,6 +91,15 @@ int main(int argc, char *argv[]) {
 		}),
 		new_test("Forests tap for green", []() {
 			return test_basic_land("Forest", "{G}");
+		}),
+		new_test("Shivan Dragon has all its parts", []() {
+			auto x = card(sets->find_card("Shivan Dragon"));
+			return x.name() == "Shivan Dragon" &&
+			       x.mana_cost() == card_database::cost("{4}{R}{R}") &&
+			       x.type() == "Creature — Dragon" &&
+			       x.text() == "Flying (This creature can't be blocked except by creatures with flying or reach.)\n{R}: Shivan Dragon gets +1/+0 until end of turn." &&
+			       x.power() == "5" &&
+			       x.toughness() == "5";
 		})
 	};
 	for(const auto &t: tests) {
