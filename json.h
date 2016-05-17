@@ -343,6 +343,7 @@ public:
 	const_iterator end() const { return const_iterator(nullptr); }
 	iterator end() { return iterator(nullptr); }
 	const size_t size() const { return _size; }
+	bool contains(const json_string &x) const;
 
 	__attribute__((pure)) operator json_boolean() const;
 	__attribute__((pure)) operator json_number() const;

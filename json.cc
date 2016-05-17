@@ -130,6 +130,16 @@ json_string::operator json_object() const {
 	throw std::logic_error("Attempt to convert JSON string to object");
 }
 
+bool json_array::contains(const json_string &x) const {
+	for(const auto &item: *this) {
+		try {
+			if(json_string(item) == x)
+				return true;
+		} catch (const json_exception &e) { }
+	}
+	return false;
+}
+
 json_array::operator json_boolean() const {
 	throw std::logic_error("Attempt to convert JSON array to boolean");
 }
