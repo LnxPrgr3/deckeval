@@ -7,7 +7,7 @@ class card : public card_database::card {
 public:
 	card(const card_database::card &c);
 protected:
-	card_database::cost _mana;
+	std::vector<card_database::cost> _mana;
 };
 
 class player {
@@ -22,7 +22,8 @@ private:
 class permanent : public card {
 public:
 	permanent(const card &c);
-	void tap();
+	void tap(int n = 0);
+	void untap();
 private:
 	player *_controller;
 	bool _tapped;

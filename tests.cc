@@ -70,6 +70,19 @@ bool test_basic_land(const char *name, const char *result) {
 	return res;
 }
 
+bool test_dual_land(const char *name, const char *result1, const char *result2) {
+	player.reset_mana();
+	auto land = game.add(player, card(sets->find_card(name)));
+	land.tap(0);
+	bool res = player.mana_pool() == card_database::cost(result1);
+	player.reset_mana();
+	land.untap();
+	land.tap(1);
+	res &= player.mana_pool() == card_database::cost(result2);
+	game.remove(land);
+	return res;
+}
+
 int main(int argc, char *argv[]) {
 	game.add(player);
 	std::unique_ptr<test> tests[] = {
@@ -91,6 +104,36 @@ int main(int argc, char *argv[]) {
 		}),
 		new_test("Forests tap for green", []() {
 			return test_basic_land("Forest", "{G}");
+		}),
+		new_test("Tundra taps for white or blue", []() {
+			return test_dual_land("Tundra", "{W}", "{U}");
+		}),
+		new_test("Underground Sea taps for blue or black", []() {
+			return test_dual_land("Underground Sea", "{U}", "{B}");
+		}),
+		new_test("Badlands taps for black or red", []() {
+			return test_dual_land("Badlands", "{B}", "{R}");
+		}),
+		new_test("Taiga taps for red or green", []() {
+			return test_dual_land("Taiga", "{R}", "{G}");
+		}),
+		new_test("Savannah taps for green or white", []() {
+			return test_dual_land("Savannah", "{G}", "{W}");
+		}),
+		new_test("Scrubland taps for white or black", []() {
+			return test_dual_land("Scrubland", "{W}", "{B}");
+		}),
+		new_test("Volcanic Island taps for blue or red", []() {
+			return test_dual_land("Volcanic Island", "{U}", "{R}");
+		}),
+		new_test("Bayou taps for black or green", []() {
+			return test_dual_land("Bayou", "{B}", "{G}");
+		}),
+		new_test("Plateau taps for red or white", []() {
+			return test_dual_land("Plateau", "{R}", "{W}");
+		}),
+		new_test("Tropical Island taps for green or blue", []() {
+			return test_dual_land("Tropical Island", "{G}", "{U}");
 		}),
 		new_test("Shivan Dragon has all its parts", []() {
 			auto x = card(sets->find_card("Shivan Dragon"));

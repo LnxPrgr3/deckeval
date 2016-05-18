@@ -1,16 +1,19 @@
 #include "game.h"
 
 card::card(const card_database::card &c) : card_database::card(c) {
-	if(name() == "Plains") {
-		_mana = card_database::cost("{W}");
-	} else if(name() == "Island") {
-		_mana = card_database::cost("{U}");
-	} else if(name() == "Swamp") {
-		_mana = card_database::cost("{B}");
-	} else if(name() == "Mountain") {
-		_mana = card_database::cost("{R}");
-	} else if(name() == "Forest") {
-		_mana = card_database::cost("{G}");
+	if(types().contains("Land")) {
+		for(const json_string &subtype: subtypes()) {
+			if(subtype == "Plains")
+				_mana.emplace_back("{W}");
+			else if(subtype == "Island")
+				_mana.emplace_back("{U}");
+			else if(subtype == "Swamp")
+				_mana.emplace_back("{B}");
+			else if(subtype == "Mountain")
+				_mana.emplace_back("{R}");
+			else if(subtype == "Forest")
+				_mana.emplace_back("{G}");
+		}
 	}
 }
 
@@ -31,11 +34,15 @@ permanent::permanent(const card &c) : card(c) {
 	_tapped = false;
 }
 
-void permanent::tap() {
+void permanent::tap(int n) {
 	if(!_tapped) {
 		_tapped = true;
-		_controller->add_mana(_mana);
+		_controller->add_mana(_mana.at(n));
 	}
+}
+
+void permanent::untap() {
+	_tapped = false;
 }
 
 player *&game::add(player &player) {
